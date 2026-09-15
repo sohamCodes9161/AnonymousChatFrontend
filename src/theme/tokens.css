@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Surfaces */
+  --surface-primary: #fafaf9;
+  --surface-secondary: #f0efec;
+  --surface-elevated: #ffffff;
+  --surface-overlay: rgba(20, 18, 24, 0.5);
+
+  /* Text */
+  --text-primary: #1a1823;
+  --text-secondary: #5b5868;
+  --text-muted: #8b8797;
+
+  /* Borders */
+  --border-default: #e4e2e0;
+
+  /* Accent — indigo-violet, deliberately not the common terracotta/neon defaults */
+  --accent-primary: #5b4fe8;
+  --accent-secondary: #8b7fff;
+
+  /* Status */
+  --status-success: #1f9d6b;
+  --status-warning: #c9821e;
+  --status-error: #d14343;
+  --status-info: #3b82c4;
+  /* Subtle tint, same reasoning as --incognito-subtle below — a
+     translucent value defined directly, not via Tailwind's opacity
+     shorthand (which doesn't work on plain-hex custom properties). */
+  --status-error-subtle: rgba(209, 67, 67, 0.1);
+
+  /* Accent */
+  --accent-primary-subtle: rgba(91, 79, 232, 0.15);
+  /* Subtle hover state, distinct from the solid active-state background
+     it sits alongside, so hover and active remain visually different. */
+  --surface-hover: rgba(20, 18, 24, 0.04);
+
+  /* Group chat participant colors — for sender-name color coding.
+     Deliberately steer clear of indigo/violet/magenta hues, since
+     those already mean "accent" and "incognito" respectively. */
+  --participant-1: #0d9488; /* teal */
+  --participant-2: #b45309; /* amber */
+  --participant-3: #be185d; /* rose */
+  --participant-4: #0369a1; /* sky */
+  --participant-5: #4d7c0f; /* lime */
+  --participant-6: #c2410c; /* orange */
+
+  /* Chat-specific */
+  --message-sent: #5b4fe8;
+  --message-received: #f0efec;
+  /* Distinct violet-magenta, reserved ONLY for Incognito — gives stealth
+     mode its own unmistakable visual signature rather than a label. */
+  --message-incognito: #a855f7;
+  /* Subtle banner background — defined directly as a translucent value,
+     not via Tailwind's bg-x/opacity shorthand, which doesn't apply
+     correctly to a plain-hex custom property. */
+  --incognito-subtle: rgba(168, 85, 247, 0.1);
+
+  /* Spacing/radius/elevation/motion */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --elevation-1: 0 1px 3px rgba(20, 18, 24, 0.08), 0 1px 2px rgba(20, 18, 24, 0.04);
+  --elevation-2: 0 4px 12px rgba(20, 18, 24, 0.1), 0 2px 4px rgba(20, 18, 24, 0.06);
+  --elevation-3: 0 12px 32px rgba(20, 18, 24, 0.16), 0 4px 8px rgba(20, 18, 24, 0.08);
+
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+}
+
+[data-theme='dark'] {
+  --surface-primary: #17151f;
+  --surface-secondary: #1f1c2b;
+  --surface-elevated: #252231;
+  --surface-overlay: rgba(0, 0, 0, 0.6);
+
+  --text-primary: #f0eef5;
+  --text-secondary: #b4b0c2;
+  --text-muted: #726d82;
+
+  --border-default: #322d42;
+
+  --accent-primary: #8b7fff;
+  --accent-secondary: #6c63ff;
+
+  --status-success: #34d399;
+  --status-warning: #f5a623;
+  --status-error: #f16565;
+  --status-info: #5fa8e0;
+  --status-error-subtle: rgba(241, 101, 101, 0.15);
+
+  --accent-primary-subtle: rgba(139, 127, 255, 0.2);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+
+  --participant-1: #2dd4bf;
+  --participant-2: #fbbf24;
+  --participant-3: #f472b6;
+  --participant-4: #38bdf8;
+  --participant-5: #a3e635;
+  --participant-6: #fb923c;
+
+  --message-sent: #6c63ff;
+  --message-received: #252231;
+  --message-incognito: #c084fc;
+  --incognito-subtle: rgba(192, 132, 252, 0.15);
+
+  --elevation-1: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --elevation-2: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --elevation-3: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+  background-color: var(--surface-primary);
+  color: var(--text-primary);
+  transition: background-color var(--duration-base) ease, color var(--duration-base) ease;
+}
