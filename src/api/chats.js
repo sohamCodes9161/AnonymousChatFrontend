@@ -31,3 +31,15 @@ export function archiveChat(chatId) {
 export function unarchiveChat(chatId) {
   return apiFetch(`/chats/${chatId}/unarchive`, { method: 'POST' });
 }
+
+export function pinChat(chatId) {
+  return apiFetch(`/chats/${chatId}/pin`, { method: 'POST' });
+}
+
+export function unpinChat(chatId) {
+  return apiFetch(`/chats/${chatId}/unpin`, { method: 'POST' });
+}
+
+export function clearChat(chatId) {
+  return apiFetch(`/chats/${chatId}/clear`, { method: 'POST' });
+}

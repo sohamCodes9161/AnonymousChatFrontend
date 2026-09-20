@@ -1,4 +1,4 @@
-import { apiFetch } from './client.js';
+import { apiFetch, apiUpload } from './client.js';
 
 export function getChat(chatId) {
   return apiFetch(`/chats/${chatId}`);
@@ -34,4 +34,10 @@ export function deleteGroupChat(chatId) {
 
 export function leaveGroupChat(chatId) {
   return apiFetch(`/chats/${chatId}/leave`, { method: 'POST' });
+}
+
+export function uploadGroupAvatar(chatId, file) {
+  const formData = new FormData();
+  formData.append('avatar', file);
+  return apiUpload(`/chats/${chatId}/avatar`, formData);
 }

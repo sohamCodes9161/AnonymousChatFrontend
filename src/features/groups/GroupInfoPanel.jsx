@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Camera } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useChat, useGroupMembers } from './useGroup.js';
 import {
@@ -7,12 +8,14 @@ import {
   usePromoteToAdmin,
   useDemoteAdmin,
   useUpdateGroupInfo,
+  useUploadGroupAvatar,
   useDeleteGroup,
   useLeaveGroup,
 } from './useGroupActions.js';
 import { Modal } from '../../components/Modal.jsx';
 import { Button } from '../../components/Button.jsx';
 import { Input } from '../../components/Input.jsx';
+import { toast } from '../../stores/toastStore.js';
 
 export function GroupInfoPanel({ chatId, isOpen, onClose }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
@@ -22,9 +25,11 @@ export function GroupInfoPanel({ chatId, isOpen, onClose }) {
   const promoteMutation = usePromoteToAdmin(chatId);
   const demoteMutation = useDemoteAdmin(chatId);
   const updateInfoMutation = useUpdateGroupInfo(chatId);
+  const uploadAvatarMutation = useUploadGroupAvatar(chatId);
   const deleteMutation = useDeleteGroup(chatId);
   const leaveMutation = useLeaveGroup(chatId);
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -48,6 +53,18 @@ export function GroupInfoPanel({ chatId, isOpen, onClose }) {
     setEditingName(false);
   }
 
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await uploadAvatarMutation.mutateAsync(file);
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload group avatar');
+    } finally {
+      e.target.value = '';
+    }
+  }
+
   async function handleLeave() {
     await leaveMutation.mutateAsync();
     onClose();
@@ -60,9 +77,42 @@ export function GroupInfoPanel({ chatId, isOpen, onClose }) {
     navigate('/chats');
   }
 
+  const initial = (chat?.name || '?').charAt(0).toUpperCase();
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Group info">
       <div className="flex flex-col gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => canManage && fileInputRef.current?.click()}
+            disabled={!canManage}
+            className="relative w-20 h-20 rounded-pill bg-accentSubtle text-accent-primary flex items-center justify-center text-2xl font-semibold overflow-hidden group disabled:cursor-default"
+            aria-label="Change group avatar"
+          >
+            {chat?.avatarUrl ? (
+              <img src={chat.avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              initial
+            )}
+            {canManage && (
+              <div className="absolute inset-0 bg-surface-overlay opacity-0 group-hover:opacity-100 transition-opacity duration-fast flex items-center justify-center">
+                <Camera size={20} className="text-white" />
+              </div>
+            )}
+          </button>
+          {canManage && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+          )}
+          {uploadAvatarMutation.isPending && <span className="text-xs text-text-muted">Uploading…</span>}
+        </div>
+
         <div>
           {editingName ? (
             <div className="flex gap-2">

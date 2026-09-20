@@ -7,6 +7,7 @@ import {
   updateGroupInfo,
   deleteGroupChat,
   leaveGroupChat,
+  uploadGroupAvatar,
 } from '../../api/groups.js';
 
 // Every action here touches both the member list and the chat list
@@ -46,6 +47,11 @@ export function useDemoteAdmin(chatId) {
 export function useUpdateGroupInfo(chatId) {
   const invalidate = useInvalidateGroup(chatId);
   return useMutation({ mutationFn: (payload) => updateGroupInfo(chatId, payload), onSuccess: invalidate });
+}
+
+export function useUploadGroupAvatar(chatId) {
+  const invalidate = useInvalidateGroup(chatId);
+  return useMutation({ mutationFn: (file) => uploadGroupAvatar(chatId, file), onSuccess: invalidate });
 }
 
 export function useDeleteGroup(chatId) {

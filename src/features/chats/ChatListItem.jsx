@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { BellOff } from 'lucide-react';
+import { BellOff, Pin } from 'lucide-react';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
 
@@ -58,6 +58,7 @@ export function ChatListItem({ chat }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium text-text-primary truncate">{title}</span>
+          {chat.membership?.pinnedAt && <Pin size={11} className="text-accent-primary flex-shrink-0" />}
           {isMuted && <BellOff size={12} className="text-text-muted flex-shrink-0" />}
         </div>
         <div className="text-xs text-text-muted truncate">{previewText}</div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore } from 'lucide-react';
+import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
 import { usePresenceStore } from '../../stores/presenceStore.js';
@@ -7,13 +7,33 @@ import { GroupInfoPanel } from '../groups/GroupInfoPanel.jsx';
 import { useIncognitoStatus, useStartIncognito, useEndIncognito } from '../incognito/useIncognito.js';
 import { useRelationshipStatus } from '../friends/useFriends.js';
 import { useBlockUser, useUnblockUser } from '../friends/useFriendActions.js';
-import { useMuteChat, useUnmuteChat, useArchiveChat, useUnarchiveChat } from '../chats/useChatActions.js';
+import {
+  useMuteChat,
+  useUnmuteChat,
+  useArchiveChat,
+  useUnarchiveChat,
+  usePinChat,
+  useUnpinChat,
+  useClearChat,
+} from '../chats/useChatActions.js';
 
 const MUTE_PRESETS = [
   { label: 'Mute for 8 hours', ms: 8 * 60 * 60 * 1000 },
   { label: 'Mute for 1 week', ms: 7 * 24 * 60 * 60 * 1000 },
   { label: 'Mute always', ms: null },
 ];
+
+function formatLastSeen(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'last seen just now';
+  if (diffMin < 60) return `last seen ${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `last seen ${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `last seen ${diffDay}d ago`;
+  return `last seen ${new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+}
 
 export function ChatHeader() {
   const { chatId } = useParams();
@@ -40,14 +60,29 @@ export function ChatHeader() {
   const unmuteMutation = useUnmuteChat();
   const archiveMutation = useArchiveChat();
   const unarchiveMutation = useUnarchiveChat();
+  const pinMutation = usePinChat();
+  const unpinMutation = useUnpinChat();
+  const clearMutation = useClearChat();
 
   if (!chat) return <div className="h-14 border-b border-border flex-shrink-0" />;
 
   const title = chat.type === 'direct' ? chat.otherParticipant?.displayName : chat.name;
-  const subtitle = chat.type === 'direct' ? (isOnline ? 'Online' : 'Offline') : 'Group';
+  // Graduated presence: online beats everything, otherwise fall back to
+  // "last seen X ago" if the other person's privacy setting allows it
+  // (lastSeenAt arrives as null from the backend when it doesn't —
+  // this component never has to know WHY, just whether it has a value).
+  const subtitle =
+    chat.type === 'direct'
+      ? isOnline
+        ? 'Online'
+        : chat.otherParticipant?.lastSeenAt
+          ? formatLastSeen(chat.otherParticipant.lastSeenAt)
+          : 'Offline'
+      : 'Group';
   const isBlocked = relationship?.status === 'blocked_by_me';
   const isMuted = chat.membership?.mutedUntil && new Date(chat.membership.mutedUntil) > new Date();
   const isArchived = Boolean(chat.membership?.archivedAt);
+  const isPinned = Boolean(chat.membership?.pinnedAt);
 
   function handleBlock() {
     if (window.confirm(`Block ${chat.otherParticipant?.displayName}?`)) {
@@ -79,6 +114,23 @@ export function ChatHeader() {
 
   function handleUnarchive() {
     unarchiveMutation.mutate(chatId);
+    setMenuOpen(false);
+  }
+
+  function handlePin() {
+    pinMutation.mutate(chatId);
+    setMenuOpen(false);
+  }
+
+  function handleUnpin() {
+    unpinMutation.mutate(chatId);
+    setMenuOpen(false);
+  }
+
+  function handleClear() {
+    if (window.confirm('Clear this chat for you? The other participant will still see the full history.')) {
+      clearMutation.mutate(chatId);
+    }
     setMenuOpen(false);
   }
 
@@ -127,6 +179,15 @@ export function ChatHeader() {
 
         {menuOpen && (
           <div className="absolute right-4 top-14 w-56 bg-surface-elevated border border-border rounded-lg shadow-elevation-2 z-10 py-1">
+            {isPinned ? (
+              <button onClick={handleUnpin} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
+                <PinOff size={14} /> Unpin
+              </button>
+            ) : (
+              <button onClick={handlePin} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
+                <Pin size={14} /> Pin
+              </button>
+            )}
             {isMuted ? (
               <button onClick={handleUnmute} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
                 <Bell size={14} /> Unmute
@@ -151,6 +212,9 @@ export function ChatHeader() {
                 <Archive size={14} /> Archive
               </button>
             )}
+            <button onClick={handleClear} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
+              <Eraser size={14} /> Clear chat
+            </button>
             {chat.type === 'direct' && (
               <>
                 <div className="my-1 border-t border-border" />
