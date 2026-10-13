@@ -2,11 +2,34 @@ import { useAuthStore } from '../stores/authStore.js';
 
 const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
+// Auth endpoints are the ONE place that relies on the httpOnly refresh
+// cookie rather than just the Bearer access token. A cookie set by a
+// genuinely different site (Render) for a page served from a
+// different site (Vercel) is a third-party cookie from the browser's
+// point of view, and modern browsers increasingly block or evict
+// those by default (Safari ITP, Firefox strict ETP, Chrome's phased
+// rollout) — no Set-Cookie attribute can override that from the
+// server side. The fix is to make auth calls same-origin: vercel.json
+// rewrites "/api/v1/auth/*" on our own domain through to the Render
+// backend, so the browser only ever talks to its own origin and the
+// cookie it receives is ordinary first-party storage. Everything
+// else (messages, uploads, etc.) only needs the Bearer token, not the
+// cookie, so it keeps calling Render directly — no reason to route
+// large payloads like image uploads through an extra proxy hop.
+// In dev there's no rewrite, so this just falls back to the same
+// origin as every other call.
+const AUTH_API_ROOT =
+  import.meta.env.VITE_AUTH_API_URL || (import.meta.env.PROD ? '/api/v1' : API_ROOT);
+
+function rootFor(path) {
+  return path.startsWith('/auth') ? AUTH_API_ROOT : API_ROOT;
+}
+
 let refreshPromise = null; // dedupes concurrent 401s into one refresh call
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_ROOT}/auth/refresh`, {
+    refreshPromise = fetch(`${rootFor('/auth/refresh')}/auth/refresh`, {
       method: 'POST',
       credentials: 'include', // sends the httpOnly refresh cookie
     })
@@ -30,7 +53,7 @@ async function refreshAccessToken() {
 export async function apiFetch(path, { method = 'GET', body, isRetry = false } = {}) {
   const { accessToken, setSession, clearSession, user } = useAuthStore.getState();
 
-  const res = await fetch(`${API_ROOT}${path}`, {
+  const res = await fetch(`${rootFor(path)}${path}`, {
     method,
     credentials: 'include',
     headers: {
@@ -69,7 +92,7 @@ export async function apiFetch(path, { method = 'GET', body, isRetry = false } =
 export async function apiUpload(path, formData, { isRetry = false } = {}) {
   const { accessToken, setSession, clearSession, user } = useAuthStore.getState();
 
-  const res = await fetch(`${API_ROOT}${path}`, {
+  const res = await fetch(`${rootFor(path)}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
