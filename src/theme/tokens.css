@@ -128,3 +128,107 @@ body {
   color: var(--text-primary);
   transition: background-color var(--duration-base) ease, color var(--duration-base) ease;
 }
+
+/* ---------------------------------------------------------------------
+   Motion & life layer — purely additive on top of the token system
+   above. Nothing here changes a color; it gives the existing palette
+   some physicality: entrance motion for new content, a living presence
+   dot, a soft ambient glow instead of flat fills. All keyframes are
+   covered by the prefers-reduced-motion rule above since it targets
+   animation-duration globally.
+   --------------------------------------------------------------------- */
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(31, 157, 107, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(31, 157, 107, 0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-message-in {
+  animation: message-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--duration-slow) ease both;
+}
+
+.animate-slide-up-in {
+  animation: slide-up-in var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-float-slow {
+  animation: float-slow 4s ease-in-out infinite;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-secondary) 25%,
+    var(--surface-hover) 37%,
+    var(--surface-secondary) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* Reusable brand gradient — used sparingly (send button, active rail,
+   sidebar header strip) so it reads as an accent, not wallpaper. */
+.bg-gradient-brand {
+  background-image: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+}
+
+.glow-accent {
+  box-shadow: 0 0 0 1px rgba(91, 79, 232, 0.12), 0 8px 24px -8px rgba(91, 79, 232, 0.35);
+}
+
+[data-theme='dark'] .glow-accent {
+  box-shadow: 0 0 0 1px rgba(139, 127, 255, 0.18), 0 8px 24px -8px rgba(139, 127, 255, 0.45);
+}

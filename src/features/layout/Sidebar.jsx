@@ -17,7 +17,7 @@ export function Sidebar() {
   const initial = (user?.displayName || '?').charAt(0).toUpperCase();
 
   return (
-    <div className="w-80 flex-shrink-0 border-r border-border flex flex-col h-full bg-surface-primary">
+    <div className="w-full flex-shrink-0 border-r border-border flex flex-col h-full bg-surface-primary">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <button
           onClick={() => setProfileOpen(true)}

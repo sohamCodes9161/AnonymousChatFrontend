@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 import { useMessages } from './useMessages.js';
 import { useSendMessage } from './useSendMessage.js';
 import { useTypingIndicator } from './useTypingIndicator.js';
@@ -13,7 +13,6 @@ import { DateDivider, isSameCalendarDay } from './DateDivider.jsx';
 import { TypingIndicator } from './TypingIndicator.jsx';
 import { ChatHeader } from '../layout/ChatHeader.jsx';
 import { IncognitoBanner } from '../incognito/IncognitoBanner.jsx';
-import { Button } from '../../components/Button.jsx';
 import { markRead } from '../../api/chats.js';
 
 const MAX_TEXTAREA_HEIGHT = 128;
@@ -114,7 +113,21 @@ export function ConversationView() {
   }
 
   if (isLoading) {
-    return <div className="flex-1 flex items-center justify-center text-text-muted text-sm">Loading…</div>;
+    return (
+      <div className="flex-1 flex flex-col h-full bg-surface-primary">
+        <div className="h-14 border-b border-border flex-shrink-0" />
+        <div className="flex-1 flex flex-col justify-end gap-3 p-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className="shimmer rounded-lg h-9"
+                style={{ width: `${120 + ((i * 37) % 140)}px` }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -203,7 +216,11 @@ export function ConversationView() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex items-end gap-2 p-3 border-t border-border">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-end gap-2 p-3 border-t border-border bg-surface-primary"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
         <textarea
           ref={textareaRef}
           value={draft}
@@ -213,11 +230,16 @@ export function ConversationView() {
           placeholder={isBlocked ? 'You cannot message this contact' : 'Type a message…'}
           disabled={isBlocked}
           rows={1}
-          className="flex-1 px-3 py-2 rounded-md bg-surface-elevated border border-border text-sm text-text-primary placeholder:text-text-muted resize-none overflow-y-auto disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+          className="flex-1 px-4 py-2.5 rounded-lg bg-surface-elevated border border-border text-sm text-text-primary placeholder:text-text-muted resize-none overflow-y-auto disabled:opacity-50 transition-shadow duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
         />
-        <Button type="submit" disabled={!draft.trim() || isBlocked}>
-          Send
-        </Button>
+        <button
+          type="submit"
+          disabled={!draft.trim() || isBlocked}
+          aria-label="Send message"
+          className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
+        >
+          <Send size={16} />
+        </button>
       </form>
     </div>
   );

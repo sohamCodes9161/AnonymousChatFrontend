@@ -69,7 +69,7 @@ export function MessageBubble({ message, senderProfile, showSenderHeader, replyP
   const bubbleColor = isIncognito
     ? 'bg-message-incognito text-white'
     : isMine
-      ? 'bg-message-sent text-white'
+      ? 'bg-gradient-to-br from-accent-primary to-accent-secondary text-white'
       : 'bg-message-received text-text-primary';
 
   const senderColorClass = getParticipantColorClass(message.senderId);
@@ -106,12 +106,12 @@ export function MessageBubble({ message, senderProfile, showSenderHeader, replyP
     <div
       className={`group flex ${isMine ? 'justify-end' : 'justify-start'} px-4 ${
         showSenderHeader ? 'pt-3' : 'py-0.5'
-      }`}
+      } ${isSending ? '' : 'animate-message-in'}`}
     >
       <div className="max-w-[70%] flex flex-col gap-1">
         {showSenderHeader && !isMine && (
           <div className="flex items-center gap-1.5 mb-0.5">
-            <div className="w-5 h-5 rounded-pill bg-surface-secondary overflow-hidden flex items-center justify-center text-[10px] font-semibold text-text-secondary flex-shrink-0">
+            <div className="w-5 h-5 rounded-pill bg-surface-secondary overflow-hidden flex items-center justify-center text-[10px] font-semibold text-text-secondary flex-shrink-0 ring-1 ring-border">
               {senderProfile?.avatarUrl ? (
                 <img src={senderProfile.avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -160,9 +160,9 @@ export function MessageBubble({ message, senderProfile, showSenderHeader, replyP
               )}
             </div>
             <div
-              className={`px-3 py-2 rounded-lg text-sm ${bubbleColor} ${isFailed ? 'opacity-50' : ''} ${
-                isSending ? 'opacity-70' : ''
-              }`}
+              className={`px-3 py-2 rounded-lg text-sm shadow-elevation-1 transition-transform duration-fast ${bubbleColor} ${
+                isMine ? 'rounded-br-sm' : 'rounded-bl-sm'
+              } ${isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''}`}
             >
               {replyPreview && (
                 <div

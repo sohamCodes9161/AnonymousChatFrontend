@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useParams } from 'react-router-dom';
 import { BellOff, Pin } from 'lucide-react';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
@@ -18,6 +18,8 @@ function formatRelativeTime(dateStr) {
 
 export function ChatListItem({ chat }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
+  const { chatId: activeChatId } = useParams();
+  const isActive = activeChatId === chat._id;
   const isOnline = usePresenceStore((s) =>
     chat.otherParticipant ? s.onlineUserIds.has(chat.otherParticipant.id) : false
   );
@@ -37,14 +39,15 @@ export function ChatListItem({ chat }) {
   return (
     <NavLink
       to={`/chats/${chat._id}`}
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-fast ${
-          isActive ? 'bg-surface-secondary' : 'hover:bg-surfaceHover'
-        }`
-      }
+      className={`relative flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-fast ${
+        isActive ? 'bg-surface-secondary shadow-elevation-1' : 'hover:bg-surfaceHover hover:translate-x-0.5'
+      }`}
     >
+      {isActive && (
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-pill bg-gradient-brand" />
+      )}
       <div className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-pill bg-accentSubtle text-accent-primary flex items-center justify-center font-semibold text-sm overflow-hidden">
+        <div className="w-10 h-10 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center font-semibold text-sm overflow-hidden">
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -52,7 +55,7 @@ export function ChatListItem({ chat }) {
           )}
         </div>
         {chat.type === 'direct' && isOnline && (
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary" />
+          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
         )}
       </div>
       <div className="min-w-0 flex-1">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { GroupInfoPanel } from '../groups/GroupInfoPanel.jsx';
@@ -37,6 +37,7 @@ function formatLastSeen(dateStr) {
 
 export function ChatHeader() {
   const { chatId } = useParams();
+  const navigate = useNavigate();
   const { data: chats } = useChats(); // already cached from the sidebar — no extra fetch
   const [infoOpen, setInfoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -83,6 +84,8 @@ export function ChatHeader() {
   const isMuted = chat.membership?.mutedUntil && new Date(chat.membership.mutedUntil) > new Date();
   const isArchived = Boolean(chat.membership?.archivedAt);
   const isPinned = Boolean(chat.membership?.pinnedAt);
+  const avatarUrl = chat.type === 'direct' ? chat.otherParticipant?.avatarUrl : chat.avatarUrl;
+  const avatarInitial = (title || '?').charAt(0).toUpperCase();
 
   function handleBlock() {
     if (window.confirm(`Block ${chat.otherParticipant?.displayName}?`)) {
@@ -136,10 +139,31 @@ export function ChatHeader() {
 
   return (
     <>
-      <div className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0 relative">
-        <div>
-          <div className="text-sm font-semibold text-text-primary">{title}</div>
-          <div className="text-xs text-text-muted">{subtitle}</div>
+      <div className="h-14 flex items-center justify-between px-3 md:px-4 border-b border-border flex-shrink-0 relative bg-surface-elevated/60 backdrop-blur-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => navigate('/chats')}
+            className="md:hidden -ml-1 p-1 text-text-secondary hover:text-text-primary transition-colors duration-fast flex-shrink-0"
+            aria-label="Back to chats"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="relative flex-shrink-0">
+            <div className="w-9 h-9 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center text-xs font-semibold overflow-hidden ring-2 ring-surface-primary">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                avatarInitial
+              )}
+            </div>
+            {chat.type === 'direct' && isOnline && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-text-primary truncate">{title}</div>
+            <div className="text-xs text-text-muted truncate">{subtitle}</div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Symmetric permissions — any member can start or end, no
