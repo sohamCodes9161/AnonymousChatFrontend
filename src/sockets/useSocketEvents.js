@@ -33,7 +33,35 @@ export function useSocketEvents() {
     function handleMessageEdited(message) {
       queryClient.setQueryData(['messages', message.chatId], (old) => {
         if (!old) return old;
-        return { ...old, messages: old.messages.map((m) => (m.id === message.id ? message : m)) };
+        return {
+          ...old,
+          // The edited payload carries no reactions — keep the ones we have.
+          messages: old.messages.map((m) =>
+            m.id === message.id ? { ...message, reactions: m.reactions || [] } : m
+          ),
+        };
+      });
+    }
+
+    // The summary's reactedByMe is computed for whoever TOGGLED, so it is
+    // only trusted when that was us; for someone else's toggle we keep
+    // our own per-emoji reactedByMe and only take the new counts.
+    function handleMessageReaction({ chatId, messageId, userId, reactions }) {
+      const myId = useAuthStore.getState().user?.id;
+      queryClient.setQueryData(['messages', chatId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          messages: old.messages.map((m) => {
+            if (m.id !== messageId) return m;
+            if (userId === myId) return { ...m, reactions };
+            const mine = new Map((m.reactions || []).map((r) => [r.emoji, r.reactedByMe]));
+            return {
+              ...m,
+              reactions: reactions.map((r) => ({ ...r, reactedByMe: mine.get(r.emoji) ?? false })),
+            };
+          }),
+        };
       });
     }
 
@@ -120,6 +148,7 @@ export function useSocketEvents() {
     socket.on('message:new', handleMessageNew);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
+    socket.on('message:reaction', handleMessageReaction);
     socket.on('message:read', handleMessageRead);
     socket.on('presence:online', handlePresenceOnline);
     socket.on('presence:offline', handlePresenceOffline);
@@ -138,6 +167,7 @@ export function useSocketEvents() {
       socket.off('message:new', handleMessageNew);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);
+      socket.off('message:reaction', handleMessageReaction);
       socket.off('message:read', handleMessageRead);
       socket.off('presence:online', handlePresenceOnline);
       socket.off('presence:offline', handlePresenceOffline);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft } from 'lucide-react';
+import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft, Search } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
 import { usePresenceStore } from '../../stores/presenceStore.js';
@@ -35,7 +35,10 @@ function formatLastSeen(dateStr) {
   return `last seen ${new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
 }
 
-export function ChatHeader() {
+// searchOpen/onToggleSearch are owned by ConversationView (it needs the
+// same state to render the search bar and scroll to results) — the
+// header just renders the button.
+export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { data: chats } = useChats(); // already cached from the sidebar — no extra fetch
@@ -165,7 +168,19 @@ export function ChatHeader() {
             <div className="text-xs text-text-muted truncate">{subtitle}</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {onToggleSearch && (
+            <button
+              onClick={onToggleSearch}
+              className={`transition-colors duration-fast ${
+                searchOpen ? 'text-accent-primary' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              aria-label="Search in conversation"
+              title="Search in conversation"
+            >
+              <Search size={18} />
+            </button>
+          )}
           {/* Symmetric permissions — any member can start or end, no
               consent gate, per the Incognito System design. Works
               identically for direct and group chats. */}

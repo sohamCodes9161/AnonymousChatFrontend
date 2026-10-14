@@ -9,7 +9,13 @@ export function useEditMessage(chatId) {
       const updated = res.data.message;
       queryClient.setQueryData(['messages', chatId], (old) => {
         if (!old) return old;
-        return { ...old, messages: old.messages.map((m) => (m.id === updated.id ? updated : m)) };
+        return {
+          ...old,
+          // Response omits reactions — keep the cached ones.
+          messages: old.messages.map((m) =>
+            m.id === updated.id ? { ...updated, reactions: m.reactions || [] } : m
+          ),
+        };
       });
     },
   });

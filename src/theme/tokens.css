@@ -188,8 +188,12 @@ body {
   50% { transform: translateY(-6px); }
 }
 
+/* fill-mode is `backwards`, NOT `both`: `both` would leave the final
+   keyframe's transform applied forever, and a transformed element
+   becomes the containing block for any position:fixed descendant
+   (reaction-picker backdrop, etc.), trapping them inside the bubble. */
 .animate-message-in {
-  animation: message-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: message-in 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .animate-pulse-dot {

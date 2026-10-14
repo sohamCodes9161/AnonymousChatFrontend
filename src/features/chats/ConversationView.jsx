@@ -1,21 +1,33 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { X, Send } from 'lucide-react';
+import { X, Send, ImagePlus } from 'lucide-react';
 import { useMessages } from './useMessages.js';
 import { useSendMessage } from './useSendMessage.js';
+import { useSendImage } from './useSendImage.js';
+import { useEnsureMessageLoaded } from './useMessageSearch.js';
 import { useTypingIndicator } from './useTypingIndicator.js';
 import { useChats } from './useChats.js';
 import { useGroupMembers } from '../groups/useGroup.js';
 import { useRelationshipStatus } from '../friends/useFriends.js';
 import { useAuthStore } from '../../stores/authStore.js';
+import { toast } from '../../stores/toastStore.js';
+import { messagePreviewText } from '../../utils/messagePreview.js';
 import { MessageBubble } from './MessageBubble.jsx';
 import { DateDivider, isSameCalendarDay } from './DateDivider.jsx';
 import { TypingIndicator } from './TypingIndicator.jsx';
+import { ChatSearchBar } from './ChatSearchBar.jsx';
 import { ChatHeader } from '../layout/ChatHeader.jsx';
 import { IncognitoBanner } from '../incognito/IncognitoBanner.jsx';
 import { markRead } from '../../api/chats.js';
 
 const MAX_TEXTAREA_HEIGHT = 128;
+// Mirrors the backend (messageImageUpload: 10MB, magic-byte check on
+// JPEG/PNG/WEBP) so bad picks fail instantly with a clear message
+// instead of after a wasted upload.
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+// Within this many px of the bottom counts as "reading the latest".
+const STICK_TO_BOTTOM_THRESHOLD = 150;
 
 export function ConversationView() {
   const { chatId } = useParams();
@@ -57,24 +69,83 @@ export function ConversationView() {
   }
 
   const sendMessageMutation = useSendMessage(chatId);
+  const sendImageMutation = useSendImage(chatId);
+  const ensureMessageLoaded = useEnsureMessageLoaded(chatId);
   const { notifyTyping, notifyStoppedTyping } = useTypingIndicator(chatId);
   const [draft, setDraft] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
+  const [pendingImage, setPendingImage] = useState(null); // { file, previewUrl }
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [jumpTarget, setJumpTarget] = useState(null);
+  const [highlightedId, setHighlightedId] = useState(null);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+
+  // This component instance is reused when the :chatId param changes,
+  // so anything per-conversation must be reset here — otherwise a draft
+  // (or a staged photo!) typed in one chat would be sent to the next.
+  useEffect(() => {
+    setDraft('');
+    setReplyingTo(null);
+    setPendingImage(null);
+    setSearchOpen(false);
+    setJumpTarget(null);
+    setHighlightedId(null);
+    stickToBottomRef.current = true;
+  }, [chatId]);
+
+  // Staged-photo preview URL is owned here: revoked whenever it's
+  // replaced, cleared, or the component unmounts.
+  useEffect(() => {
+    const url = pendingImage?.previewUrl;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [pendingImage?.previewUrl]);
+
+  const messages = data?.messages;
+  const lastMessage = messages?.[messages.length - 1];
+  const lastMessageId = lastMessage?.id;
+  const lastIsMine = lastMessage?.senderId === currentUserId;
+
+  // Follow new messages only if the user is already near the bottom (or
+  // sent it themselves) — and NOT when older pages are prepended by
+  // search, which changes the list length but not the last message.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (stickToBottomRef.current || lastIsMine) {
+      el.scrollTo({ top: el.scrollHeight });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, lastMessageId]);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < STICK_TO_BOTTOM_THRESHOLD;
+  }
+
+  // Images change height after they load; keep the latest message in
+  // view if that's where the user was.
+  function handleMediaLoad() {
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) el.scrollTo({ top: el.scrollHeight });
+  }
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [data?.messages?.length]);
-
-  useEffect(() => {
-    const messages = data?.messages;
     if (!messages?.length) return;
-    const lastMessage = messages[messages.length - 1];
-    markRead(chatId, lastMessage.id).catch(() => {
+    // Optimistic entries carry a client-side temp id, not a real
+    // ObjectId — marking those as "read" would just be rejected.
+    const lastReal = [...messages].reverse().find((m) => m.status !== 'sending' && m.status !== 'failed');
+    if (!lastReal) return;
+    markRead(chatId, lastReal.id).catch(() => {
       /* non-critical — unread count staying stale isn't worth surfacing an error for */
     });
-  }, [chatId, data?.messages]);
+  }, [chatId, messages]);
 
   // Auto-grow the textarea up to a fixed max height, then it scrolls
   // internally rather than pushing the rest of the layout around.
@@ -85,11 +156,80 @@ export function ConversationView() {
     el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT) + 'px';
   }, [draft]);
 
+  // Jump-to-message (from search): scroll the target into view and
+  // flash a ring around it.
+  useEffect(() => {
+    if (!jumpTarget) return;
+    document
+      .getElementById(`msg-${jumpTarget.id}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlightedId(jumpTarget.id);
+    const t = setTimeout(() => setHighlightedId(null), 2200);
+    return () => clearTimeout(t);
+  }, [jumpTarget]);
+
+  async function handleSelectSearchResult(message) {
+    const loaded = await ensureMessageLoaded(message.id);
+    if (!loaded) {
+      toast.info('That message is too far back to load');
+      return;
+    }
+    // Set after the (possibly prepended) cache write, so both land in
+    // one render and the element exists when the effect above runs.
+    stickToBottomRef.current = false;
+    setJumpTarget({ id: message.id, nonce: Date.now() });
+  }
+
+  function stageImage(file) {
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Only JPEG, PNG, and WEBP images can be sent');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error('That image is larger than 10MB');
+      return;
+    }
+    setPendingImage({ file, previewUrl: URL.createObjectURL(file) });
+  }
+
+  function handlePickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same file be picked again after removing it
+    stageImage(file);
+  }
+
+  function handlePaste(e) {
+    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (file) {
+      e.preventDefault();
+      stageImage(file);
+    }
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
+    if (isBlocked) return;
     const text = draft.trim();
-    if (!text || isBlocked) return;
 
+    if (pendingImage) {
+      if (replyingTo) toast.info("Photos can't be sent as replies yet — sent without the reply");
+      sendImageMutation.mutate({
+        file: pendingImage.file,
+        caption: text || undefined,
+        tempId: crypto.randomUUID(),
+        // Separate object URL for the optimistic bubble, owned (and
+        // revoked) by the mutation — the preview URL above is ours.
+        localUrl: URL.createObjectURL(pendingImage.file),
+      });
+      setPendingImage(null);
+      setDraft('');
+      setReplyingTo(null);
+      notifyStoppedTyping();
+      return;
+    }
+
+    if (!text) return;
     sendMessageMutation.mutate({
       text,
       clientMessageId: crypto.randomUUID(),
@@ -131,8 +271,16 @@ export function ConversationView() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-surface-primary">
-      <ChatHeader />
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-surface-primary">
+      <ChatHeader searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((o) => !o)} />
+      {searchOpen && (
+        <ChatSearchBar
+          chatId={chatId}
+          resolveSenderName={resolveSenderName}
+          onSelect={handleSelectSearchResult}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
       <IncognitoBanner chatId={chatId} />
       {isBlocked && (
         <div className="bg-statusErrorSubtle border-b border-status-error px-4 py-2 text-xs text-status-error text-center">
@@ -142,7 +290,7 @@ export function ConversationView() {
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto py-4">
         {data?.messages?.map((message, idx) => {
           const prevMessage = data.messages[idx - 1];
           const showSenderHeader =
@@ -162,7 +310,7 @@ export function ConversationView() {
             ? repliedMessage
               ? {
                   senderName: resolveSenderName(repliedMessage.senderId),
-                  text: repliedMessage.content?.text || '[deleted]',
+                  text: messagePreviewText(repliedMessage),
                 }
               : { senderName: null, text: 'Original message' } // outside the currently loaded page
             : null;
@@ -181,7 +329,7 @@ export function ConversationView() {
               : null;
 
           return (
-            <div key={message.id}>
+            <div key={message.id} id={`msg-${message.id}`}>
               {showDateDivider && <DateDivider dateStr={message.createdAt} />}
               <MessageBubble
                 message={message}
@@ -190,6 +338,8 @@ export function ConversationView() {
                 replyPreview={replyPreview}
                 onReply={setReplyingTo}
                 readStatus={readStatus}
+                highlighted={highlightedId === message.id}
+                onMediaLoad={handleMediaLoad}
               />
             </div>
           );
@@ -204,7 +354,7 @@ export function ConversationView() {
             <div className="font-semibold text-accent-primary">
               Replying to {resolveSenderName(replyingTo.senderId)}
             </div>
-            <div className="text-text-muted truncate">{replyingTo.content?.text}</div>
+            <div className="text-text-muted truncate">{messagePreviewText(replyingTo)}</div>
           </div>
           <button
             onClick={() => setReplyingTo(null)}
@@ -216,25 +366,70 @@ export function ConversationView() {
         </div>
       )}
 
+      {pendingImage && (
+        <div className="flex items-center gap-3 px-3 md:px-4 py-2 bg-surface-secondary border-t border-border animate-slide-up-in">
+          <img
+            src={pendingImage.previewUrl}
+            alt="Selected photo preview"
+            className="w-14 h-14 rounded-md object-cover flex-shrink-0"
+          />
+          <div className="min-w-0 flex-1 text-xs">
+            <div className="font-semibold text-text-primary truncate">{pendingImage.file.name}</div>
+            <div className="text-text-muted">Add a caption below, or just send</div>
+          </div>
+          <button
+            onClick={() => setPendingImage(null)}
+            className="text-text-muted hover:text-text-primary flex-shrink-0"
+            aria-label="Remove photo"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="flex items-end gap-2 p-3 border-t border-border bg-surface-primary"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_IMAGE_TYPES.join(',')}
+          onChange={handlePickFile}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isBlocked}
+          aria-label="Attach photo"
+          title="Attach photo"
+          className="flex-shrink-0 w-10 h-10 rounded-pill text-text-secondary hover:text-accent-primary hover:bg-surfaceHover flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <ImagePlus size={20} />
+        </button>
         <textarea
           ref={textareaRef}
           value={draft}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onBlur={notifyStoppedTyping}
-          placeholder={isBlocked ? 'You cannot message this contact' : 'Type a message…'}
+          placeholder={
+            isBlocked
+              ? 'You cannot message this contact'
+              : pendingImage
+                ? 'Add a caption…'
+                : 'Type a message…'
+          }
           disabled={isBlocked}
           rows={1}
-          className="flex-1 px-4 py-2.5 rounded-lg bg-surface-elevated border border-border text-sm text-text-primary placeholder:text-text-muted resize-none overflow-y-auto disabled:opacity-50 transition-shadow duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+          className="flex-1 min-w-0 px-4 py-2.5 rounded-lg bg-surface-elevated border border-border text-sm text-text-primary placeholder:text-text-muted resize-none overflow-y-auto disabled:opacity-50 transition-shadow duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
         />
         <button
           type="submit"
-          disabled={!draft.trim() || isBlocked}
+          disabled={(!draft.trim() && !pendingImage) || isBlocked}
           aria-label="Send message"
           className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
         >
