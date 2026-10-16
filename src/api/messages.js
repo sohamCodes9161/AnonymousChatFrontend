@@ -21,10 +21,12 @@ export function listMessages(chatId, before) {
   return apiFetch(`/chats/${chatId}/messages${query}`);
 }
 
-export function sendMessage(chatId, { text, clientMessageId, replyToMessageId }) {
+// Text messages pass `text`; other kinds (currently 'gif') pass
+// `type` + `content` explicitly.
+export function sendMessage(chatId, { text, type = 'text', content, clientMessageId, replyToMessageId }) {
   return apiFetch(`/chats/${chatId}/messages`, {
     method: 'POST',
-    body: { content: { text }, clientMessageId, replyToMessageId },
+    body: { type, content: content ?? { text }, clientMessageId, replyToMessageId },
   });
 }
 

@@ -7,19 +7,20 @@ export function useSendMessage(chatId) {
   const user = useAuthStore((s) => s.user);
 
   return useMutation({
-    mutationFn: ({ text, clientMessageId, replyToMessageId }) =>
-      sendMessage(chatId, { text, clientMessageId, replyToMessageId }),
+    mutationFn: ({ text, type, content, clientMessageId, replyToMessageId }) =>
+      sendMessage(chatId, { text, type, content, clientMessageId, replyToMessageId }),
 
-    onMutate: async ({ text, clientMessageId, replyToMessageId }) => {
+    onMutate: async ({ text, type = 'text', content, clientMessageId, replyToMessageId }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] });
 
       const optimisticMessage = {
         id: clientMessageId, // temporary key — swapped for the real id in onSuccess
         chatId,
         senderId: user?.id,
-        type: 'text',
-        content: { text },
+        type,
+        content: content ?? { text },
         status: 'sending',
+        reactions: [],
         replyToMessageId: replyToMessageId || null,
         createdAt: new Date().toISOString(),
         editedAt: null,

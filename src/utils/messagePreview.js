@@ -6,5 +6,6 @@ export function messagePreviewText(message) {
   if (!message) return 'Original message';
   if (message.status === 'deleted') return '[deleted]';
   if (message.type === 'image') return message.content?.caption ? `📷 ${message.content.caption}` : '📷 Photo';
+  if (message.type === 'gif') return '🎞️ GIF';
   return message.content?.text || '';
 }

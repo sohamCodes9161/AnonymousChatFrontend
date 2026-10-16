@@ -16,16 +16,22 @@ import { MessageBubble } from './MessageBubble.jsx';
 import { DateDivider, isSameCalendarDay } from './DateDivider.jsx';
 import { TypingIndicator } from './TypingIndicator.jsx';
 import { ChatSearchBar } from './ChatSearchBar.jsx';
+import { GifPicker } from './GifPicker.jsx';
+import { isGiphyConfigured } from '../../api/giphy.js';
+import { useIncognitoStatus } from '../incognito/useIncognito.js';
 import { ChatHeader } from '../layout/ChatHeader.jsx';
 import { IncognitoBanner } from '../incognito/IncognitoBanner.jsx';
 import { markRead } from '../../api/chats.js';
+import { compressImage, formatBytes } from '../../utils/compressImage.js';
 
 const MAX_TEXTAREA_HEIGHT = 128;
 // Mirrors the backend (messageImageUpload: 10MB, magic-byte check on
 // JPEG/PNG/WEBP) so bad picks fail instantly with a clear message
 // instead of after a wasted upload.
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+// Generous pre-compression cap: the photo is shrunk client-side before
+// upload (the server's own 10MB limit applies to the compressed result).
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 // Within this many px of the bottom counts as "reading the latest".
 const STICK_TO_BOTTOM_THRESHOLD = 150;
 
@@ -74,7 +80,13 @@ export function ConversationView() {
   const { notifyTyping, notifyStoppedTyping } = useTypingIndicator(chatId);
   const [draft, setDraft] = useState('');
   const [replyingTo, setReplyingTo] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null); // { file, previewUrl }
+  const [pendingImage, setPendingImage] = useState(null); // { file, previewUrl, originalSize }
+  const [compressing, setCompressing] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const { data: incognitoSession } = useIncognitoStatus(chatId);
+  const isIncognito = incognitoSession?.status === 'active';
+  // Bumped on chat switch / removal so a slow compression can't land late.
+  const stageTokenRef = useRef(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [jumpTarget, setJumpTarget] = useState(null);
   const [highlightedId, setHighlightedId] = useState(null);
@@ -90,10 +102,13 @@ export function ConversationView() {
     setDraft('');
     setReplyingTo(null);
     setPendingImage(null);
+    setGifPickerOpen(false);
     setSearchOpen(false);
     setJumpTarget(null);
     setHighlightedId(null);
     stickToBottomRef.current = true;
+    stageTokenRef.current += 1;
+    setCompressing(false);
   }, [chatId]);
 
   // Staged-photo preview URL is owned here: revoked whenever it's
@@ -180,17 +195,36 @@ export function ConversationView() {
     setJumpTarget({ id: message.id, nonce: Date.now() });
   }
 
-  function stageImage(file) {
+  async function stageImage(file) {
     if (!file) return;
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       toast.error('Only JPEG, PNG, and WEBP images can be sent');
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      toast.error('That image is larger than 10MB');
+      toast.error('That image is larger than 25MB');
       return;
     }
-    setPendingImage({ file, previewUrl: URL.createObjectURL(file) });
+    const token = ++stageTokenRef.current;
+    setCompressing(true);
+    const compressed = await compressImage(file);
+    if (token !== stageTokenRef.current) return; // switched chat / removed meanwhile
+    setCompressing(false);
+    if (compressed.size > 10 * 1024 * 1024) {
+      toast.error('That image is still too large after compression');
+      return;
+    }
+    setPendingImage({
+      file: compressed,
+      previewUrl: URL.createObjectURL(compressed),
+      originalSize: file.size,
+    });
+  }
+
+  function removePendingImage() {
+    stageTokenRef.current += 1;
+    setCompressing(false);
+    setPendingImage(null);
   }
 
   function handlePickFile(e) {
@@ -209,7 +243,7 @@ export function ConversationView() {
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (isBlocked) return;
+    if (isBlocked || compressing) return;
     const text = draft.trim();
 
     if (pendingImage) {
@@ -238,6 +272,24 @@ export function ConversationView() {
     setDraft('');
     setReplyingTo(null);
     notifyStoppedTyping();
+  }
+
+  function handleSendGif(gif) {
+    if (isBlocked) return;
+    sendMessageMutation.mutate({
+      type: 'gif',
+      content: {
+        gifUrl: gif.gifUrl,
+        previewUrl: gif.previewUrl,
+        width: gif.width,
+        height: gif.height,
+        title: gif.title || undefined,
+      },
+      clientMessageId: crypto.randomUUID(),
+      replyToMessageId: replyingTo?.id,
+    });
+    setReplyingTo(null);
+    setGifPickerOpen(false);
   }
 
   function handleKeyDown(e) {
@@ -366,6 +418,12 @@ export function ConversationView() {
         </div>
       )}
 
+      {compressing && (
+        <div className="px-3 md:px-4 py-2 bg-surface-secondary border-t border-border text-xs text-text-muted">
+          Optimizing photo…
+        </div>
+      )}
+
       {pendingImage && (
         <div className="flex items-center gap-3 px-3 md:px-4 py-2 bg-surface-secondary border-t border-border animate-slide-up-in">
           <img
@@ -375,10 +433,15 @@ export function ConversationView() {
           />
           <div className="min-w-0 flex-1 text-xs">
             <div className="font-semibold text-text-primary truncate">{pendingImage.file.name}</div>
-            <div className="text-text-muted">Add a caption below, or just send</div>
+            <div className="text-text-muted">
+              {pendingImage.file.size < pendingImage.originalSize
+                ? `${formatBytes(pendingImage.originalSize)} → ${formatBytes(pendingImage.file.size)} · `
+                : `${formatBytes(pendingImage.file.size)} · `}
+              Add a caption, or just send
+            </div>
           </div>
           <button
-            onClick={() => setPendingImage(null)}
+            onClick={removePendingImage}
             className="text-text-muted hover:text-text-primary flex-shrink-0"
             aria-label="Remove photo"
           >
@@ -389,9 +452,16 @@ export function ConversationView() {
 
       <form
         onSubmit={handleSubmit}
-        className="flex items-end gap-2 p-3 border-t border-border bg-surface-primary"
+        className="relative flex items-end gap-2 p-3 border-t border-border bg-surface-primary"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
       >
+        {gifPickerOpen && (
+          <GifPicker
+            onSelect={handleSendGif}
+            onClose={() => setGifPickerOpen(false)}
+            isIncognito={isIncognito}
+          />
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -409,6 +479,26 @@ export function ConversationView() {
         >
           <ImagePlus size={20} />
         </button>
+        {isGiphyConfigured && (
+          <button
+            type="button"
+            data-gif-toggle
+            onClick={() => setGifPickerOpen((open) => !open)}
+            disabled={isBlocked}
+            aria-label="Send a GIF"
+            aria-expanded={gifPickerOpen}
+            title="Send a GIF"
+            className={`flex-shrink-0 w-10 h-10 rounded-pill flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed ${
+              gifPickerOpen
+                ? 'text-accent-primary bg-surfaceHover'
+                : 'text-text-secondary hover:text-accent-primary hover:bg-surfaceHover'
+            }`}
+          >
+            <span className="text-[10px] font-extrabold leading-none border-2 border-current rounded px-1 py-0.5">
+              GIF
+            </span>
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={draft}
@@ -429,7 +519,7 @@ export function ConversationView() {
         />
         <button
           type="submit"
-          disabled={(!draft.trim() && !pendingImage) || isBlocked}
+          disabled={(!draft.trim() && !pendingImage) || compressing || isBlocked}
           aria-label="Send message"
           className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
         >

@@ -86,9 +86,12 @@ export function MessageBubble({
   const isFailed = message.status === 'failed';
   const isSending = message.status === 'sending';
   const isImage = message.type === 'image';
+  const isGif = message.type === 'gif';
+  // Photos and GIFs fill the bubble edge-to-edge instead of sitting in text padding.
+  const isMedia = isImage || isGif;
   // Editing replaces content with { text } server-side, which would
   // destroy an image message's content — so only text is editable.
-  const canEdit = isMine && !isDeleted && !isSending && !isFailed && !isImage;
+  const canEdit = isMine && !isDeleted && !isSending && !isFailed && !isImage && !isGif;
   const canDelete = isMine && !isDeleted && !isSending && !isFailed;
   const canReply = !isDeleted && !isSending && !isFailed;
   const canReact = !isDeleted && !isSending && !isFailed;
@@ -244,7 +247,7 @@ export function MessageBubble({
 
             <div
               onClick={() => setActionsVisible((v) => !v)}
-              className={`${isImage && !isDeleted ? 'p-1' : 'px-3 py-2'} rounded-lg text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
+              className={`${isMedia && !isDeleted ? 'p-1' : 'px-3 py-2'} rounded-lg text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
                 isMine ? 'rounded-br-sm' : 'rounded-bl-sm'
               } ${isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''} ${
                 highlighted ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-surface-primary' : ''
@@ -253,7 +256,7 @@ export function MessageBubble({
               {replyPreview && (
                 <div
                   className={`mb-1.5 pl-2 border-l-2 text-xs opacity-80 ${
-                    isImage ? 'mx-2 mt-1' : ''
+                    isMedia ? 'mx-2 mt-1' : ''
                   } ${isMine || isIncognito ? 'border-white/40' : 'border-text-muted'}`}
                 >
                   <div className="font-semibold">{replyPreview.senderName || 'Original message'}</div>
@@ -261,9 +264,36 @@ export function MessageBubble({
                 </div>
               )}
               {isDeleted ? (
-                <span className={`italic opacity-70 ${isImage ? 'px-2 py-1 inline-block' : ''}`}>
+                <span className={`italic opacity-70 ${isMedia ? 'px-2 py-1 inline-block' : ''}`}>
                   Message deleted
                 </span>
+              ) : isGif ? (
+                // Size is reserved from the API's width/height, so the chat
+                // doesn't jump when the GIF finishes loading. The bubble
+                // shows the light 200px rendition; the full-size original
+                // is only fetched if someone opens it.
+                <div
+                  className="relative overflow-hidden rounded-md bg-surface-secondary shimmer"
+                  style={{
+                    width: Math.min(message.content?.width || 200, 260),
+                    maxWidth: '100%',
+                    aspectRatio: `${message.content?.width || 1} / ${message.content?.height || 1}`,
+                  }}
+                >
+                  <img
+                    src={message.content?.previewUrl}
+                    alt={message.content?.title || 'GIF'}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    onLoad={onMediaLoad}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxOpen(true);
+                    }}
+                    className="absolute inset-0 w-full h-full object-cover cursor-zoom-in"
+                  />
+                </div>
               ) : isImage ? (
                 <>
                   <img
@@ -326,8 +356,8 @@ export function MessageBubble({
 
       {lightboxOpen && (
         <ImageLightbox
-          src={message.content?.imageUrl}
-          alt={message.content?.caption || 'Shared photo'}
+          src={isGif ? message.content?.gifUrl : message.content?.imageUrl}
+          alt={isGif ? message.content?.title || 'GIF' : message.content?.caption || 'Shared photo'}
           onClose={() => setLightboxOpen(false)}
         />
       )}
