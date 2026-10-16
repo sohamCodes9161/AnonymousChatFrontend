@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Check, X, CornerUpLeft, CheckCheck, SmilePlus } from 'lucide-react';
+import { Pencil, Trash2, Check, X, CornerUpLeft, CheckCheck, SmilePlus, Clock } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useEditMessage, useDeleteMessage } from './useMessageActions.js';
 import { useToggleReaction } from './useReactions.js';
@@ -43,6 +43,48 @@ function SystemMessageLine({ message }) {
   return <div className="text-center text-xs text-text-muted py-1">{text}</div>;
 }
 
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Time + edited flag + delivery state, rendered INSIDE the bubble. Colors
+// are inherited from the bubble (or the dark overlay pill on media), so
+// it reads as low-contrast text rather than a separate line.
+function MessageMeta({ message, isMine, readStatus, isDeleted }) {
+  const isSending = message.status === 'sending';
+  const isFailed = message.status === 'failed';
+  return (
+    <span className="inline-flex items-center gap-1 text-xs leading-none whitespace-nowrap select-none">
+      {message.status === 'edited' && !isDeleted && <span className="opacity-70">edited</span>}
+      {isFailed && <span className="font-semibold">Failed</span>}
+      <span className="opacity-70">{formatTime(message.createdAt)}</span>
+      {isMine && !isDeleted && !isFailed && isSending && <Clock size={12} className="opacity-70" />}
+      {isMine && !isDeleted && !isFailed && !isSending && readStatus === 'read' && (
+        <CheckCheck size={14} className="text-sky-300" aria-label="Read" />
+      )}
+      {isMine && !isDeleted && !isFailed && !isSending && readStatus === 'sent' && (
+        <Check size={14} className="opacity-70" aria-label="Sent" />
+      )}
+    </span>
+  );
+}
+
+// Text with the meta tucked into its bottom-right corner. An invisible
+// copy of the meta sits at the end of the text flow to reserve room for
+// it (so the last line never runs underneath), and the visible copy is
+// pinned to the corner — the same trick WhatsApp Web uses.
+function TextWithMeta({ children, meta, className = '' }) {
+  return (
+    <div className={`relative px-3 pt-1.5 pb-1.5 leading-snug ${className}`}>
+      {children}
+      <span aria-hidden="true" className="invisible inline-block ml-3 align-bottom">
+        {meta}
+      </span>
+      <span className="absolute bottom-1.5 right-3">{meta}</span>
+    </div>
+  );
+}
+
 /**
  * senderProfile/showSenderHeader: group chats only.
  * replyPreview: { senderName, text } | null — resolved by the caller
@@ -63,6 +105,7 @@ export function MessageBubble({
   readStatus,
   highlighted = false,
   onMediaLoad,
+  groupedWithNext = false,
 }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const editMutation = useEditMessage(message.chatId);
@@ -72,6 +115,7 @@ export function MessageBubble({
   const [editDraft, setEditDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [mediaLoaded, setMediaLoaded] = useState(false);
   // Touch screens have no hover, so tapping a bubble reveals its actions.
   // On md+ the hover rule below takes over and this flag is ignored.
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -100,7 +144,7 @@ export function MessageBubble({
     ? 'bg-message-incognito text-white'
     : isMine
       ? 'bg-gradient-to-br from-accent-primary to-accent-secondary text-white'
-      : 'bg-message-received text-text-primary';
+      : 'bg-message-received text-text-primary ring-1 ring-black/5';
 
   const senderColorClass = getParticipantColorClass(message.senderId);
   const initial = (senderProfile?.displayName || '?').charAt(0).toUpperCase();
@@ -139,17 +183,42 @@ export function MessageBubble({
   }
 
   const actionButtonClass =
-    'p-1.5 rounded-pill text-text-muted hover:text-text-primary hover:bg-surfaceHover transition-colors duration-fast';
+    'p-1 rounded-pill text-text-muted hover:text-text-primary hover:bg-surfaceHover transition-colors duration-fast';
+
+  const caption = isImage ? message.content?.caption : null;
+  // Photos/GIFs without a caption carry their timestamp on a dark pill over
+  // the media itself; with a caption it moves below, inside the text area.
+  const overlayMeta = isMedia && !isDeleted && !caption;
+  const meta = (
+    <MessageMeta message={message} isMine={isMine} readStatus={readStatus} isDeleted={isDeleted} />
+  );
+  const hasReactions = reactions.length > 0 && !isDeleted;
+
+  function onMediaClick(e) {
+    e.stopPropagation();
+    setLightboxOpen(true);
+  }
+
+  function handleMediaLoad(e) {
+    setMediaLoaded(true);
+    onMediaLoad?.(e);
+  }
+
+  const overlayPill = (
+    <div className="absolute bottom-2 right-2 px-2 py-1 rounded-full bg-black/50 text-white backdrop-blur-sm">
+      {meta}
+    </div>
+  );
 
   return (
     <div
       className={`group flex ${isMine ? 'justify-end' : 'justify-start'} px-3 md:px-4 ${
-        showSenderHeader ? 'pt-3' : 'py-0.5'
-      } ${isSending ? '' : 'animate-message-in'}`}
+        groupedWithNext ? 'pb-1' : 'pb-3'
+      } ${hasReactions ? 'mb-3' : ''} ${isSending ? '' : 'animate-message-in'}`}
     >
-      <div className="max-w-[85%] md:max-w-[70%] flex flex-col gap-1">
+      <div className={`min-w-0 max-w-[75%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
         {showSenderHeader && !isMine && (
-          <div className="flex items-center gap-1.5 mb-0.5">
+          <div className="flex items-center gap-1.5 mb-1 pt-1">
             <div className="w-5 h-5 rounded-pill bg-surface-secondary overflow-hidden flex items-center justify-center text-[10px] font-semibold text-text-secondary flex-shrink-0 ring-1 ring-border">
               {senderProfile?.avatarUrl ? (
                 <img src={senderProfile.avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -164,13 +233,13 @@ export function MessageBubble({
         )}
 
         {isEditing ? (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 w-full">
             <input
               value={editDraft}
               onChange={(e) => setEditDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="flex-1 px-2 py-1.5 rounded-md bg-surface-elevated border border-accent-primary text-sm text-text-primary focus-visible:outline-none"
+              className="flex-1 min-w-0 px-2 py-1.5 rounded-md bg-surface-elevated border border-accent-primary text-sm text-text-primary focus-visible:outline-none"
             />
             <button onClick={saveEdit} className="text-status-success" aria-label="Save edit">
               <Check size={16} />
@@ -180,11 +249,16 @@ export function MessageBubble({
             </button>
           </div>
         ) : (
-          <div className={`relative flex items-center gap-1 ${isMine ? 'flex-row-reverse' : ''}`}>
+          // Wrapper is exactly bubble-sized, so the action toolbar and the
+          // reaction picker can be positioned against it without taking up
+          // any layout width of their own.
+          <div className="relative">
             <div
-              className={`${
-                actionsVisible ? 'opacity-100' : 'opacity-0'
-              } md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-fast flex items-center flex-shrink-0`}
+              className={`absolute top-1/2 -translate-y-1/2 ${
+                isMine ? 'right-full mr-1' : 'left-full ml-1'
+              } ${
+                actionsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              } md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto transition-opacity duration-fast flex items-center`}
             >
               {canReact && (
                 <button
@@ -247,35 +321,35 @@ export function MessageBubble({
 
             <div
               onClick={() => setActionsVisible((v) => !v)}
-              className={`${isMedia && !isDeleted ? 'p-1' : 'px-3 py-2'} rounded-lg text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
-                isMine ? 'rounded-br-sm' : 'rounded-bl-sm'
+              className={`relative ${isMedia && !isDeleted ? 'p-1' : ''} rounded-2xl text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
+                groupedWithNext ? '' : isMine ? 'rounded-br-md' : 'rounded-bl-md'
               } ${isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''} ${
                 highlighted ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-surface-primary' : ''
               }`}
             >
               {replyPreview && (
                 <div
-                  className={`mb-1.5 pl-2 border-l-2 text-xs opacity-80 ${
-                    isMedia ? 'mx-2 mt-1' : ''
-                  } ${isMine || isIncognito ? 'border-white/40' : 'border-text-muted'}`}
+                  className={`mx-1.5 mt-1.5 mb-0.5 px-2 py-1 rounded-md border-l-4 text-xs bg-black/10 ${
+                    isMine || isIncognito ? 'border-white/60' : 'border-accent-primary'
+                  }`}
                 >
-                  <div className="font-semibold">{replyPreview.senderName || 'Original message'}</div>
-                  <div className="truncate max-w-[200px]">{replyPreview.text}</div>
+                  <div className="font-semibold opacity-90">{replyPreview.senderName || 'Original message'}</div>
+                  <div className="truncate max-w-[220px] opacity-80">{replyPreview.text}</div>
                 </div>
               )}
+
               {isDeleted ? (
-                <span className={`italic opacity-70 ${isMedia ? 'px-2 py-1 inline-block' : ''}`}>
-                  Message deleted
-                </span>
+                <TextWithMeta meta={meta}>
+                  <span className="italic opacity-70">Message deleted</span>
+                </TextWithMeta>
               ) : isGif ? (
-                // Size is reserved from the API's width/height, so the chat
-                // doesn't jump when the GIF finishes loading. The bubble
-                // shows the light 200px rendition; the full-size original
-                // is only fetched if someone opens it.
+                // Space is reserved from the API's width/height so the chat
+                // doesn't jump when the GIF loads. The bubble shows the light
+                // 200px rendition; the full original opens on click.
                 <div
-                  className="relative overflow-hidden rounded-md bg-surface-secondary shimmer"
+                  className="relative overflow-hidden rounded-xl bg-surface-secondary shimmer max-h-80"
                   style={{
-                    width: Math.min(message.content?.width || 200, 260),
+                    width: Math.min(message.content?.width || 200, 288),
                     maxWidth: '100%',
                     aspectRatio: `${message.content?.width || 1} / ${message.content?.height || 1}`,
                   }}
@@ -286,78 +360,74 @@ export function MessageBubble({
                     loading="lazy"
                     decoding="async"
                     referrerPolicy="no-referrer"
-                    onLoad={onMediaLoad}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLightboxOpen(true);
-                    }}
+                    onLoad={handleMediaLoad}
+                    onClick={onMediaClick}
                     className="absolute inset-0 w-full h-full object-cover cursor-zoom-in"
                   />
+                  {overlayMeta && overlayPill}
                 </div>
               ) : isImage ? (
                 <>
-                  <img
-                    src={message.content?.imageUrl}
-                    alt={message.content?.caption || 'Shared photo'}
-                    onLoad={onMediaLoad}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLightboxOpen(true);
-                    }}
-                    className="block rounded-md max-h-72 w-auto max-w-full object-cover cursor-zoom-in"
-                  />
-                  {message.content?.caption && (
-                    <div className="px-2 pt-1.5 pb-1 whitespace-pre-wrap break-words">
-                      {message.content.caption}
-                    </div>
+                  <div
+                    className="relative overflow-hidden rounded-xl w-72 md:w-80 max-w-full bg-surface-secondary"
+                    // Natural height isn't stored on the message, so hold a
+                    // placeholder height until the photo has loaded.
+                    style={mediaLoaded ? undefined : { minHeight: 160 }}
+                  >
+                    <img
+                      src={message.content?.imageUrl}
+                      alt={caption || 'Shared photo'}
+                      onLoad={handleMediaLoad}
+                      onClick={onMediaClick}
+                      className="block w-full h-auto max-h-80 object-cover cursor-zoom-in"
+                    />
+                    {overlayMeta && overlayPill}
+                  </div>
+                  {caption && (
+                    <TextWithMeta meta={meta}>
+                      <span className="whitespace-pre-wrap break-words">{caption}</span>
+                    </TextWithMeta>
                   )}
                 </>
               ) : (
-                <span className="whitespace-pre-wrap break-words">{message.content?.text}</span>
+                <TextWithMeta meta={meta}>
+                  <span className="whitespace-pre-wrap break-words">{message.content?.text}</span>
+                </TextWithMeta>
+              )}
+
+              {/* Pinned to the bubble's bottom edge so it overlaps the border
+                  instead of adding a row to the message stream. */}
+              {hasReactions && (
+                <div className="absolute -bottom-2.5 right-3 z-[1] flex gap-1">
+                  {reactions.map((r) => (
+                    <button
+                      key={r.emoji}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canReact) react(r.emoji);
+                      }}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border shadow-sm bg-surface-elevated transition-transform duration-fast active:scale-90 ${
+                        r.reactedByMe
+                          ? 'border-accent-primary text-accent-primary'
+                          : 'border-border text-text-secondary'
+                      }`}
+                      aria-label={`${r.emoji} ${r.count}${r.reactedByMe ? ', you reacted' : ''}`}
+                    >
+                      <span>{r.emoji}</span>
+                      <span className="font-medium">{r.count}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         )}
-
-        {reactions.length > 0 && !isDeleted && (
-          <div className={`flex flex-wrap gap-1 ${isMine ? 'justify-end' : ''}`}>
-            {reactions.map((r) => (
-              <button
-                key={r.emoji}
-                onClick={() => canReact && react(r.emoji)}
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-pill text-xs border transition-all duration-fast active:scale-90 animate-message-in ${
-                  r.reactedByMe
-                    ? 'bg-accentSubtle border-accent-primary text-accent-primary'
-                    : 'bg-surface-elevated border-border text-text-secondary hover:bg-surfaceHover'
-                }`}
-                aria-label={`${r.emoji} ${r.count}${r.reactedByMe ? ', you reacted' : ''}`}
-              >
-                <span>{r.emoji}</span>
-                <span className="font-medium">{r.count}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className={`flex items-center gap-1.5 text-xs text-text-muted ${isMine ? 'justify-end' : ''}`}>
-          {message.status === 'edited' && !isDeleted && <span>edited</span>}
-          {isFailed && <span className="text-status-error">failed to send</span>}
-          <span>
-            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {readStatus && (
-            <CheckCheck
-              size={14}
-              className={readStatus === 'read' ? 'text-accent-primary' : 'text-text-muted'}
-            />
-          )}
-        </div>
       </div>
 
       {lightboxOpen && (
         <ImageLightbox
           src={isGif ? message.content?.gifUrl : message.content?.imageUrl}
-          alt={isGif ? message.content?.title || 'GIF' : message.content?.caption || 'Shared photo'}
+          alt={isGif ? message.content?.title || 'GIF' : caption || 'Shared photo'}
           onClose={() => setLightboxOpen(false)}
         />
       )}

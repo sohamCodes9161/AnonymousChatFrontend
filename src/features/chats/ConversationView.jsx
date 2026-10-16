@@ -323,7 +323,7 @@ export function ConversationView() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-surface-primary">
+    <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-surface-primary">
       <ChatHeader searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((o) => !o)} />
       {searchOpen && (
         <ChatSearchBar
@@ -342,7 +342,7 @@ export function ConversationView() {
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto py-4">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-3">
         {data?.messages?.map((message, idx) => {
           const prevMessage = data.messages[idx - 1];
           const showSenderHeader =
@@ -354,6 +354,16 @@ export function ConversationView() {
 
           const showDateDivider =
             !prevMessage || !isSameCalendarDay(prevMessage.createdAt, message.createdAt);
+
+          // Consecutive messages from one sender (same day) sit tight
+          // together; spacing only opens up when the sender changes.
+          const nextMessage = data.messages[idx + 1];
+          const groupedWithNext =
+            Boolean(nextMessage) &&
+            nextMessage.type !== 'system' &&
+            message.type !== 'system' &&
+            nextMessage.senderId === message.senderId &&
+            isSameCalendarDay(message.createdAt, nextMessage.createdAt);
 
           const repliedMessage = message.replyToMessageId
             ? messagesById.get(message.replyToMessageId)
@@ -391,6 +401,7 @@ export function ConversationView() {
                 onReply={setReplyingTo}
                 readStatus={readStatus}
                 highlighted={highlightedId === message.id}
+                groupedWithNext={groupedWithNext}
                 onMediaLoad={handleMediaLoad}
               />
             </div>

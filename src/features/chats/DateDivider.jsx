@@ -18,8 +18,8 @@ function formatDateDivider(dateStr) {
 
 export function DateDivider({ dateStr }) {
   return (
-    <div className="flex items-center justify-center py-3">
-      <span className="text-xs text-text-muted bg-surface-secondary px-3 py-1 rounded-pill">
+    <div className="flex justify-center">
+      <span className="mx-auto my-4 text-xs font-medium text-text-secondary bg-neutral-500/15 px-3 py-1 rounded-full">
         {formatDateDivider(dateStr)}
       </span>
     </div>

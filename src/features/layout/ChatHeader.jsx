@@ -17,6 +17,10 @@ import {
   useClearChat,
 } from '../chats/useChatActions.js';
 
+// Uniform 36px round hit area for every action icon on the right.
+const HEADER_BTN =
+  'w-9 h-9 rounded-pill flex items-center justify-center hover:bg-surfaceHover transition-colors duration-fast';
+
 const MUTE_PRESETS = [
   { label: 'Mute for 8 hours', ms: 8 * 60 * 60 * 1000 },
   { label: 'Mute for 1 week', ms: 7 * 24 * 60 * 60 * 1000 },
@@ -68,7 +72,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   const unpinMutation = useUnpinChat();
   const clearMutation = useClearChat();
 
-  if (!chat) return <div className="h-14 border-b border-border flex-shrink-0" />;
+  if (!chat) return <div className="h-[52px] border-b border-border flex-shrink-0" />;
 
   const title = chat.type === 'direct' ? chat.otherParticipant?.displayName : chat.name;
   // Graduated presence: online beats everything, otherwise fall back to
@@ -142,11 +146,11 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
 
   return (
     <>
-      <div className="h-14 flex items-center justify-between px-3 md:px-4 border-b border-border flex-shrink-0 relative bg-surface-elevated/60 backdrop-blur-sm">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="min-h-[52px] py-1.5 flex items-center justify-between gap-2 px-2 md:px-4 border-b border-border flex-shrink-0 relative bg-surface-elevated/60 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => navigate('/chats')}
-            className="md:hidden -ml-1 p-1 text-text-secondary hover:text-text-primary transition-colors duration-fast flex-shrink-0"
+            className="md:hidden p-1.5 -ml-1 rounded-pill text-text-secondary hover:text-text-primary transition-colors duration-fast flex-shrink-0"
             aria-label="Back to chats"
           >
             <ArrowLeft size={20} />
@@ -163,18 +167,23 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
             )}
           </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-text-primary truncate">{title}</div>
-            <div className="text-xs text-text-muted truncate">{subtitle}</div>
+          {/* Vertical stack: name on top, presence directly beneath. */}
+          <div className="flex flex-col min-w-0 leading-tight">
+            <span className="text-sm font-semibold text-text-primary truncate">{title}</span>
+            <span
+              className={`text-xs truncate ${
+                chat.type === 'direct' && isOnline ? 'text-status-success' : 'text-text-muted'
+              }`}
+            >
+              {subtitle}
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           {onToggleSearch && (
             <button
               onClick={onToggleSearch}
-              className={`transition-colors duration-fast ${
-                searchOpen ? 'text-accent-primary' : 'text-text-secondary hover:text-text-primary'
-              }`}
+              className={`${HEADER_BTN} ${searchOpen ? 'text-accent-primary' : 'text-text-secondary hover:text-text-primary'}`}
               aria-label="Search in conversation"
               title="Search in conversation"
             >
@@ -188,11 +197,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
             onClick={() =>
               isIncognitoActive ? endIncognitoMutation.mutate() : startIncognitoMutation.mutate()
             }
-            className={`transition-colors duration-fast ${
-              isIncognitoActive
-                ? 'text-message-incognito'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
+            className={`${HEADER_BTN} ${isIncognitoActive ? 'text-message-incognito' : 'text-text-secondary hover:text-text-primary'}`}
             aria-label={isIncognitoActive ? 'End incognito' : 'Start incognito'}
             title={isIncognitoActive ? 'End incognito' : 'Start incognito'}
           >
@@ -201,7 +206,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
           {chat.type === 'group' && (
             <button
               onClick={() => setInfoOpen(true)}
-              className="text-text-secondary hover:text-text-primary transition-colors duration-fast"
+              className={`${HEADER_BTN} text-text-secondary hover:text-text-primary`}
               aria-label="Group info"
             >
               <Info size={18} />
@@ -209,7 +214,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
           )}
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="text-text-secondary hover:text-text-primary transition-colors duration-fast"
+            className={`${HEADER_BTN} text-text-secondary hover:text-text-primary`}
             aria-label="More options"
           >
             <MoreVertical size={18} />
@@ -217,7 +222,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
         </div>
 
         {menuOpen && (
-          <div className="absolute right-4 top-14 w-56 bg-surface-elevated border border-border rounded-lg shadow-elevation-2 z-10 py-1">
+          <div className="absolute right-2 md:right-4 top-full mt-1 w-56 bg-surface-elevated border border-border rounded-lg shadow-elevation-2 z-10 py-1">
             {isPinned ? (
               <button onClick={handleUnpin} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
                 <PinOff size={14} /> Unpin
