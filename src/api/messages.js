@@ -30,6 +30,11 @@ export function sendMessage(chatId, { text, type = 'text', content, clientMessag
   });
 }
 
+// "Delete for me" — hides the messages from this user only.
+export function deleteMessagesForMe(chatId, messageIds) {
+  return apiFetch(`/chats/${chatId}/messages/delete-for-me`, { method: 'POST', body: { messageIds } });
+}
+
 export function editMessage(messageId, text) {
   return apiFetch(`/messages/${messageId}`, { method: 'PATCH', body: { content: { text } } });
 }

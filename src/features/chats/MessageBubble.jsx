@@ -1,13 +1,8 @@
-import { useState } from 'react';
-import { Pencil, Trash2, Check, X, CornerUpLeft, CheckCheck, SmilePlus, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Check, X, CheckCheck, Clock } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
-import { useEditMessage, useDeleteMessage } from './useMessageActions.js';
-import { useToggleReaction } from './useReactions.js';
+import { useLongPress } from '../../hooks/useLongPress.js';
 import { ImageLightbox } from '../../components/ImageLightbox.jsx';
-
-// Must mirror the backend's ALLOWED_EMOJIS (reactions.service.js) — the
-// server rejects anything else.
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 const PARTICIPANT_COLOR_CLASSES = [
   'text-participant-1',
@@ -86,59 +81,70 @@ function TextWithMeta({ children, meta, className = '' }) {
 }
 
 /**
+ * A message row. It has NO inline action buttons — everything (react,
+ * reply, edit, copy, delete) lives in the selection bar, entered by
+ * long-pressing (touch) or right-clicking (desktop) a message.
+ *
  * senderProfile/showSenderHeader: group chats only.
- * replyPreview: { senderName, text } | null — resolved by the caller
- * from the currently loaded message list (or a generic fallback if the
- * replied-to message is outside the loaded page).
- * readStatus: 'sent' | 'read' | null — only computed for your own
- * messages in DIRECT chats; groups skip per-message read state
- * entirely (a deliberate scope decision, not an oversight — accurately
- * showing "read by whom" across N members is materially more complex).
+ * replyPreview: { senderName, text } | null — resolved by the caller.
+ * readStatus: 'sent' | 'read' | null — own messages in DIRECT chats only.
  * highlighted: briefly true after jumping here from search.
+ * selectionMode / selected / onLongPress / onToggleSelect: selection state
+ * is owned by the conversation (the header bar needs it too).
+ * isEditing / onSaveEdit / onCancelEdit: inline edit, started from the bar.
  */
 export function MessageBubble({
   message,
   senderProfile,
   showSenderHeader,
   replyPreview,
-  onReply,
   readStatus,
   highlighted = false,
   onMediaLoad,
   groupedWithNext = false,
+  selectionMode = false,
+  selected = false,
+  onLongPress,
+  onToggleSelect,
+  isEditing = false,
+  onSaveEdit,
+  onCancelEdit,
 }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const editMutation = useEditMessage(message.chatId);
-  const deleteMutation = useDeleteMessage(message.chatId);
-  const reactionMutation = useToggleReaction(message.chatId);
-  const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [mediaLoaded, setMediaLoaded] = useState(false);
-  // Touch screens have no hover, so tapping a bubble reveals its actions.
-  // On md+ the hover rule below takes over and this flag is ignored.
-  const [actionsVisible, setActionsVisible] = useState(false);
 
-  if (message.type === 'system') {
+  const isSystem = message.type === 'system';
+  const isDeleted = message.status === 'deleted';
+  const isFailed = message.status === 'failed';
+  const isSending = message.status === 'sending';
+  // Optimistic (temp id) and deleted messages have nothing the bar could act on.
+  const selectable = !isSystem && !isDeleted && !isSending && !isFailed;
+
+  const press = useLongPress({
+    enabled: selectable,
+    interceptTaps: selectionMode,
+    onLongPress: () => onLongPress?.(message.id),
+    onTap: () => onToggleSelect?.(message.id),
+  });
+
+  // Seed the edit box each time editing starts.
+  useEffect(() => {
+    if (isEditing) setEditDraft(message.content?.text || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
+  if (isSystem) {
     return <SystemMessageLine message={message} />;
   }
 
   const isMine = message.senderId === currentUserId;
-  const isDeleted = message.status === 'deleted';
   const isIncognito = Boolean(message.incognitoSessionId);
-  const isFailed = message.status === 'failed';
-  const isSending = message.status === 'sending';
   const isImage = message.type === 'image';
   const isGif = message.type === 'gif';
   // Photos and GIFs fill the bubble edge-to-edge instead of sitting in text padding.
   const isMedia = isImage || isGif;
-  // Editing replaces content with { text } server-side, which would
-  // destroy an image message's content — so only text is editable.
-  const canEdit = isMine && !isDeleted && !isSending && !isFailed && !isImage && !isGif;
-  const canDelete = isMine && !isDeleted && !isSending && !isFailed;
-  const canReply = !isDeleted && !isSending && !isFailed;
-  const canReact = !isDeleted && !isSending && !isFailed;
 
   const bubbleColor = isIncognito
     ? 'bg-message-incognito text-white'
@@ -150,40 +156,16 @@ export function MessageBubble({
   const initial = (senderProfile?.displayName || '?').charAt(0).toUpperCase();
   const reactions = message.reactions || [];
 
-  function startEdit() {
-    setEditDraft(message.content?.text || '');
-    setIsEditing(true);
-  }
-
-  function cancelEdit() {
-    setIsEditing(false);
-  }
-
   async function saveEdit() {
     const text = editDraft.trim();
     if (!text) return;
-    await editMutation.mutateAsync({ messageId: message.id, text });
-    setIsEditing(false);
+    await onSaveEdit?.(message.id, text);
   }
 
-  function handleKeyDown(e) {
+  function handleEditKeyDown(e) {
     if (e.key === 'Enter') saveEdit();
-    if (e.key === 'Escape') cancelEdit();
+    if (e.key === 'Escape') onCancelEdit?.();
   }
-
-  function handleDelete() {
-    if (window.confirm('Delete this message?')) {
-      deleteMutation.mutate(message.id);
-    }
-  }
-
-  function react(emoji) {
-    reactionMutation.mutate({ messageId: message.id, emoji });
-    setPickerOpen(false);
-  }
-
-  const actionButtonClass =
-    'p-1 rounded-pill text-text-muted hover:text-text-primary hover:bg-surfaceHover transition-colors duration-fast';
 
   const caption = isImage ? message.content?.caption : null;
   // Photos/GIFs without a caption carry their timestamp on a dark pill over
@@ -211,10 +193,19 @@ export function MessageBubble({
   );
 
   return (
+    <>
     <div
+      {...press}
+      aria-selected={selectionMode ? selected : undefined}
+      // Text selection is off on touch (it would fight the long-press) and
+      // while selecting; desktop keeps normal text selection otherwise.
       className={`group flex ${isMine ? 'justify-end' : 'justify-start'} px-3 md:px-4 ${
         groupedWithNext ? 'pb-1' : 'pb-3'
-      } ${hasReactions ? 'mb-3' : ''} ${isSending ? '' : 'animate-message-in'}`}
+      } ${hasReactions ? 'mb-3' : ''} ${isSending ? '' : 'animate-message-in'} ${
+        selectable ? 'select-none [-webkit-touch-callout:none]' : ''
+      } ${selectable && !selectionMode ? 'md:select-text' : ''} ${
+        selected ? 'bg-accentSubtle' : ''
+      } ${selectionMode && selectable ? 'cursor-pointer' : ''} transition-colors duration-fast`}
     >
       <div className={`min-w-0 max-w-[75%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
         {showSenderHeader && !isMine && (
@@ -237,90 +228,20 @@ export function MessageBubble({
             <input
               value={editDraft}
               onChange={(e) => setEditDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleEditKeyDown}
               autoFocus
               className="flex-1 min-w-0 px-2 py-1.5 rounded-md bg-surface-elevated border border-accent-primary text-sm text-text-primary focus-visible:outline-none"
             />
-            <button onClick={saveEdit} className="text-status-success" aria-label="Save edit">
-              <Check size={16} />
+            <button onClick={saveEdit} className="p-1 text-status-success" aria-label="Save edit">
+              <Check size={18} />
             </button>
-            <button onClick={cancelEdit} className="text-status-error" aria-label="Cancel edit">
-              <X size={16} />
+            <button onClick={onCancelEdit} className="p-1 text-status-error" aria-label="Cancel edit">
+              <X size={18} />
             </button>
           </div>
         ) : (
-          // Wrapper is exactly bubble-sized, so the action toolbar and the
-          // reaction picker can be positioned against it without taking up
-          // any layout width of their own.
           <div className="relative">
             <div
-              className={`absolute top-1/2 -translate-y-1/2 ${
-                isMine ? 'right-full mr-1' : 'left-full ml-1'
-              } ${
-                actionsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              } md:opacity-0 md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:focus-within:opacity-100 md:focus-within:pointer-events-auto transition-opacity duration-fast flex items-center`}
-            >
-              {canReact && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPickerOpen((o) => !o);
-                  }}
-                  className={actionButtonClass}
-                  aria-label="Add reaction"
-                >
-                  <SmilePlus size={14} />
-                </button>
-              )}
-              {canReply && (
-                <button onClick={() => onReply?.(message)} className={actionButtonClass} aria-label="Reply">
-                  <CornerUpLeft size={14} />
-                </button>
-              )}
-              {canEdit && (
-                <button onClick={startEdit} className={actionButtonClass} aria-label="Edit message">
-                  <Pencil size={14} />
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  onClick={handleDelete}
-                  className={`${actionButtonClass} hover:!text-status-error`}
-                  aria-label="Delete message"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-
-            {pickerOpen && (
-              <>
-                <button
-                  className="fixed inset-0 z-10 cursor-default"
-                  onClick={() => setPickerOpen(false)}
-                  aria-label="Close reaction picker"
-                />
-                <div
-                  className={`absolute -top-11 ${
-                    isMine ? 'right-0' : 'left-0'
-                  } z-20 flex items-center gap-0.5 px-1.5 py-1 rounded-pill bg-surface-elevated border border-border shadow-elevation-2 animate-slide-up-in`}
-                >
-                  {REACTION_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => react(emoji)}
-                      className="w-8 h-8 rounded-pill text-lg flex items-center justify-center hover:bg-surfaceHover hover:scale-125 active:scale-95 transition-transform duration-fast"
-                      aria-label={`React with ${emoji}`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div
-              onClick={() => setActionsVisible((v) => !v)}
               className={`relative ${isMedia && !isDeleted ? 'p-1' : ''} rounded-2xl text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
                 groupedWithNext ? '' : isMine ? 'rounded-br-md' : 'rounded-bl-md'
               } ${isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''} ${
@@ -359,6 +280,7 @@ export function MessageBubble({
                     alt={message.content?.title || 'GIF'}
                     loading="lazy"
                     decoding="async"
+                    draggable={false}
                     referrerPolicy="no-referrer"
                     onLoad={handleMediaLoad}
                     onClick={onMediaClick}
@@ -377,6 +299,7 @@ export function MessageBubble({
                     <img
                       src={message.content?.imageUrl}
                       alt={caption || 'Shared photo'}
+                      draggable={false}
                       onLoad={handleMediaLoad}
                       onClick={onMediaClick}
                       className="block w-full h-auto max-h-80 object-cover cursor-zoom-in"
@@ -396,17 +319,14 @@ export function MessageBubble({
               )}
 
               {/* Pinned to the bubble's bottom edge so it overlaps the border
-                  instead of adding a row to the message stream. */}
+                  instead of adding a row to the message stream. Tapping a chip
+                  is handled by the row while selecting. */}
               {hasReactions && (
                 <div className="absolute -bottom-2.5 right-3 z-[1] flex gap-1">
                   {reactions.map((r) => (
-                    <button
+                    <span
                       key={r.emoji}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (canReact) react(r.emoji);
-                      }}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border shadow-sm bg-surface-elevated transition-transform duration-fast active:scale-90 ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border shadow-sm bg-surface-elevated ${
                         r.reactedByMe
                           ? 'border-accent-primary text-accent-primary'
                           : 'border-border text-text-secondary'
@@ -415,7 +335,7 @@ export function MessageBubble({
                     >
                       <span>{r.emoji}</span>
                       <span className="font-medium">{r.count}</span>
-                    </button>
+                    </span>
                   ))}
                 </div>
               )}
@@ -423,7 +343,10 @@ export function MessageBubble({
           </div>
         )}
       </div>
+    </div>
 
+      {/* Outside the row: React events bubble through portals, so inside it
+          a press on the preview would count as a press on this message. */}
       {lightboxOpen && (
         <ImageLightbox
           src={isGif ? message.content?.gifUrl : message.content?.imageUrl}
@@ -431,6 +354,6 @@ export function MessageBubble({
           onClose={() => setLightboxOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }

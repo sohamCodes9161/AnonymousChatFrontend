@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { X, Send, ImagePlus } from 'lucide-react';
+import { X, Send, Plus, Smile, ImagePlus } from 'lucide-react';
 import { useMessages } from './useMessages.js';
 import { useSendMessage } from './useSendMessage.js';
 import { useSendImage } from './useSendImage.js';
+import { useEditMessage, useDeleteMessage, useDeleteForMe } from './useMessageActions.js';
+import { useToggleReaction } from './useReactions.js';
 import { useEnsureMessageLoaded } from './useMessageSearch.js';
 import { useTypingIndicator } from './useTypingIndicator.js';
 import { useChats } from './useChats.js';
@@ -17,6 +19,11 @@ import { DateDivider, isSameCalendarDay } from './DateDivider.jsx';
 import { TypingIndicator } from './TypingIndicator.jsx';
 import { ChatSearchBar } from './ChatSearchBar.jsx';
 import { GifPicker } from './GifPicker.jsx';
+import { EmojiPicker } from './EmojiPicker.jsx';
+import { SelectionBar } from './SelectionBar.jsx';
+import { DeleteMessagesDialog } from './DeleteMessagesDialog.jsx';
+import { useDismiss } from '../../hooks/useDismiss.js';
+import { copyToClipboard } from '../../utils/clipboard.js';
 import { isGiphyConfigured } from '../../api/giphy.js';
 import { useIncognitoStatus } from '../incognito/useIncognito.js';
 import { ChatHeader } from '../layout/ChatHeader.jsx';
@@ -34,6 +41,32 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 // Within this many px of the bottom counts as "reading the latest".
 const STICK_TO_BOTTOM_THRESHOLD = 150;
+
+// Small menu above the + button.
+function PlusMenu({ onClose, onPhoto, onGif }) {
+  useDismiss(onClose);
+  const itemClass =
+    'w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-surface-secondary transition-colors duration-fast';
+  return (
+    <div
+      data-tray
+      role="menu"
+      className="absolute z-30 bottom-full left-2 md:left-3 mb-2 w-44 py-1 bg-surface-elevated border border-border rounded-lg shadow-elevation-2 animate-slide-up-in"
+    >
+      <button type="button" role="menuitem" onClick={onPhoto} className={itemClass}>
+        <ImagePlus size={18} className="text-accent-primary" /> Photo
+      </button>
+      {onGif && (
+        <button type="button" role="menuitem" onClick={onGif} className={itemClass}>
+          <span className="w-[18px] text-center text-[10px] font-extrabold leading-none text-accent-primary border-2 border-current rounded px-0.5 py-0.5">
+            GIF
+          </span>
+          GIF
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function ConversationView() {
   const { chatId } = useParams();
@@ -82,7 +115,19 @@ export function ConversationView() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [pendingImage, setPendingImage] = useState(null); // { file, previewUrl, originalSize }
   const [compressing, setCompressing] = useState(false);
-  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  // Which popover above the composer is open: the + menu, emoji or GIF picker.
+  const [tray, setTray] = useState(null); // null | 'plus' | 'emoji' | 'gif'
+  const closeTray = useCallback(() => setTray(null), []);
+  // Selection mode: entered by long-press / right-click, exited when the
+  // last message is deselected, a bar action completes, or Escape.
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const editMutation = useEditMessage(chatId);
+  const deleteEveryoneMutation = useDeleteMessage(chatId);
+  const deleteForMeMutation = useDeleteForMe(chatId);
+  const reactionMutation = useToggleReaction(chatId);
   const { data: incognitoSession } = useIncognitoStatus(chatId);
   const isIncognito = incognitoSession?.status === 'active';
   // Bumped on chat switch / removal so a slow compression can't land late.
@@ -102,7 +147,10 @@ export function ConversationView() {
     setDraft('');
     setReplyingTo(null);
     setPendingImage(null);
-    setGifPickerOpen(false);
+    setTray(null);
+    setSelectedMessageIds([]);
+    setEditingId(null);
+    setDeleteDialogOpen(false);
     setSearchOpen(false);
     setJumpTarget(null);
     setHighlightedId(null);
@@ -124,6 +172,36 @@ export function ConversationView() {
   const lastMessage = messages?.[messages.length - 1];
   const lastMessageId = lastMessage?.id;
   const lastIsMine = lastMessage?.senderId === currentUserId;
+
+  const selectionMode = selectedMessageIds.length > 0;
+  const selectedMessages = useMemo(() => {
+    const ids = new Set(selectedMessageIds);
+    return (messages || []).filter((m) => ids.has(m.id)); // chat order, not tap order
+  }, [messages, selectedMessageIds]);
+
+  // Live updates can remove or delete what's selected/being edited (the
+  // sender deletes it, an Incognito session ends, "delete for me" from
+  // another tab) — drop those from the selection instead of acting on ghosts.
+  useEffect(() => {
+    if (!messages) return;
+    const live = new Set(
+      messages.filter((m) => m.status !== 'deleted' && m.status !== 'sending' && m.status !== 'failed').map((m) => m.id)
+    );
+    setSelectedMessageIds((prev) => {
+      const next = prev.filter((id) => live.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+    setEditingId((id) => (id && !live.has(id) ? null : id));
+  }, [messages]);
+
+  useEffect(() => {
+    if (!selectionMode) return undefined;
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setSelectedMessageIds([]);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectionMode]);
 
   // Follow new messages only if the user is already near the bottom (or
   // sent it themselves) — and NOT when older pages are prepended by
@@ -274,6 +352,125 @@ export function ConversationView() {
     notifyStoppedTyping();
   }
 
+  // ---- Selection actions ---------------------------------------------
+  // Idempotent on purpose: the long-press timer and the browser's own
+  // contextmenu event can both fire for one gesture.
+  function startSelection(id) {
+    setTray(null);
+    setSelectedMessageIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+
+  function toggleSelection(id) {
+    setSelectedMessageIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function clearSelection() {
+    setSelectedMessageIds([]);
+  }
+
+  function handleReplySelected() {
+    const message = selectedMessages[0];
+    if (!message) return;
+    setReplyingTo(message);
+    clearSelection();
+    textareaRef.current?.focus();
+  }
+
+  function handleEditSelected() {
+    const message = selectedMessages[0];
+    if (!message) return;
+    setEditingId(message.id);
+    clearSelection();
+  }
+
+  async function handleSaveEdit(messageId, text) {
+    try {
+      await editMutation.mutateAsync({ messageId, text });
+      setEditingId(null);
+    } catch (err) {
+      toast.error(err?.message || 'Could not edit message');
+    }
+  }
+
+  async function handleCopySelected() {
+    const text = selectedMessages
+      .map((m) => (m.type === 'text' ? m.content?.text : m.content?.caption))
+      .filter(Boolean)
+      .join('\n');
+    if (!text) {
+      toast.info('Nothing to copy');
+      return;
+    }
+    const ok = await copyToClipboard(text);
+    if (ok) toast.success('Copied');
+    else toast.error('Could not copy to clipboard');
+    clearSelection();
+  }
+
+  function handleReactSelected(emoji) {
+    const message = selectedMessages[0];
+    if (!message) return;
+    reactionMutation.mutate({ messageId: message.id, emoji });
+    clearSelection();
+  }
+
+  async function handleDeleteForMe() {
+    setDeleteBusy(true);
+    try {
+      await deleteForMeMutation.mutateAsync(selectedMessageIds);
+      setDeleteDialogOpen(false);
+      clearSelection();
+    } catch (err) {
+      toast.error(err?.message || 'Could not delete messages');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  async function handleDeleteForEveryone() {
+    setDeleteBusy(true);
+    const results = await Promise.allSettled(
+      selectedMessageIds.map((id) => deleteEveryoneMutation.mutateAsync(id))
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) toast.error(`${failed} message${failed > 1 ? 's' : ''} couldn't be deleted`);
+    setDeleteBusy(false);
+    setDeleteDialogOpen(false);
+    clearSelection();
+  }
+
+  // Only the sender can delete for everyone, so it's offered only when
+  // every selected message is yours.
+  const canDeleteForEveryone =
+    selectionMode && selectedMessages.every((m) => m.senderId === currentUserId);
+
+  // ---- Composer helpers ----------------------------------------------
+  function toggleTray(name) {
+    setTray((current) => (current === name ? null : name));
+  }
+
+  function openPhotoPicker() {
+    setTray(null);
+    fileInputRef.current?.click();
+  }
+
+  // Inserts at the caret (the browser keeps a textarea's selection while
+  // it's blurred). Focus is only restored where there's a hardware
+  // keyboard — on phones that would pop the keyboard over the emoji grid.
+  function insertEmoji(emoji) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? draft.length;
+    setDraft(draft.slice(0, start) + emoji + draft.slice(end));
+    notifyTyping();
+    requestAnimationFrame(() => {
+      if (!el) return;
+      const pos = start + emoji.length;
+      if (window.matchMedia?.('(hover: hover)').matches) el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
   function handleSendGif(gif) {
     if (isBlocked) return;
     sendMessageMutation.mutate({
@@ -289,7 +486,7 @@ export function ConversationView() {
       replyToMessageId: replyingTo?.id,
     });
     setReplyingTo(null);
-    setGifPickerOpen(false);
+    setTray(null);
   }
 
   function handleKeyDown(e) {
@@ -324,7 +521,20 @@ export function ConversationView() {
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-surface-primary">
-      <ChatHeader searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((o) => !o)} />
+      {selectionMode ? (
+        <SelectionBar
+          selectedMessages={selectedMessages}
+          currentUserId={currentUserId}
+          onClose={clearSelection}
+          onReply={handleReplySelected}
+          onEdit={handleEditSelected}
+          onCopy={handleCopySelected}
+          onDelete={() => setDeleteDialogOpen(true)}
+          onReact={handleReactSelected}
+        />
+      ) : (
+        <ChatHeader searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((o) => !o)} />
+      )}
       {searchOpen && (
         <ChatSearchBar
           chatId={chatId}
@@ -398,10 +608,16 @@ export function ConversationView() {
                 showSenderHeader={showSenderHeader}
                 senderProfile={isGroup ? memberProfileById.get(message.senderId) : null}
                 replyPreview={replyPreview}
-                onReply={setReplyingTo}
                 readStatus={readStatus}
                 highlighted={highlightedId === message.id}
                 groupedWithNext={groupedWithNext}
+                selectionMode={selectionMode}
+                selected={selectedMessageIds.includes(message.id)}
+                onLongPress={startSelection}
+                onToggleSelect={toggleSelection}
+                isEditing={editingId === message.id}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={() => setEditingId(null)}
                 onMediaLoad={handleMediaLoad}
               />
             </div>
@@ -463,15 +679,19 @@ export function ConversationView() {
 
       <form
         onSubmit={handleSubmit}
-        className="relative flex items-end gap-2 p-3 border-t border-border bg-surface-primary"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        className="relative flex items-end gap-1 px-2 md:px-3 pt-2 border-t border-border bg-surface-primary"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
-        {gifPickerOpen && (
-          <GifPicker
-            onSelect={handleSendGif}
-            onClose={() => setGifPickerOpen(false)}
-            isIncognito={isIncognito}
+        {tray === 'plus' && (
+          <PlusMenu
+            onClose={closeTray}
+            onPhoto={openPhotoPicker}
+            onGif={isGiphyConfigured ? () => setTray('gif') : null}
           />
+        )}
+        {tray === 'emoji' && <EmojiPicker onPick={insertEmoji} onClose={closeTray} />}
+        {tray === 'gif' && (
+          <GifPicker onSelect={handleSendGif} onClose={closeTray} isIncognito={isIncognito} />
         )}
         <input
           ref={fileInputRef}
@@ -482,61 +702,71 @@ export function ConversationView() {
         />
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          data-tray-toggle
+          onClick={() => toggleTray('plus')}
           disabled={isBlocked}
-          aria-label="Attach photo"
-          title="Attach photo"
+          aria-label="Attach"
+          aria-expanded={tray === 'plus'}
           className="flex-shrink-0 w-10 h-10 rounded-pill text-text-secondary hover:text-accent-primary hover:bg-surfaceHover flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <ImagePlus size={20} />
+          <Plus size={22} className={`transition-transform duration-fast ${tray === 'plus' ? 'rotate-45' : ''}`} />
         </button>
-        {isGiphyConfigured && (
-          <button
-            type="button"
-            data-gif-toggle
-            onClick={() => setGifPickerOpen((open) => !open)}
-            disabled={isBlocked}
-            aria-label="Send a GIF"
-            aria-expanded={gifPickerOpen}
-            title="Send a GIF"
-            className={`flex-shrink-0 w-10 h-10 rounded-pill flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed ${
-              gifPickerOpen
-                ? 'text-accent-primary bg-surfaceHover'
-                : 'text-text-secondary hover:text-accent-primary hover:bg-surfaceHover'
-            }`}
-          >
-            <span className="text-[10px] font-extrabold leading-none border-2 border-current rounded px-1 py-0.5">
-              GIF
-            </span>
-          </button>
-        )}
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onBlur={notifyStoppedTyping}
-          placeholder={
-            isBlocked
-              ? 'You cannot message this contact'
-              : pendingImage
-                ? 'Add a caption…'
-                : 'Type a message…'
-          }
+        <button
+          type="button"
+          data-tray-toggle
+          onClick={() => toggleTray('emoji')}
           disabled={isBlocked}
-          rows={1}
-          className="flex-1 min-w-0 px-4 py-2.5 rounded-lg bg-surface-elevated border border-border text-sm text-text-primary placeholder:text-text-muted resize-none overflow-y-auto disabled:opacity-50 transition-shadow duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
-        />
+          aria-label="Emoji"
+          aria-expanded={tray === 'emoji'}
+          className={`flex-shrink-0 w-10 h-10 rounded-pill hover:bg-surfaceHover flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed ${
+            tray === 'emoji' ? 'text-accent-primary' : 'text-text-secondary hover:text-accent-primary'
+          }`}
+        >
+          <Smile size={21} />
+        </button>
+        {/* The rounded field is the wrapper; the textarea inside has no
+            border or padding of its own and its scrollbar is hidden, so
+            nothing can ever cut across the field's rounded edge. Height
+            follows the text (see the auto-grow effect) up to a cap. */}
+        <div className="flex-1 min-w-0 flex items-end bg-surface-secondary rounded-[1.5rem] px-4 py-2 border border-transparent focus-within:border-accent-primary transition-colors duration-fast">
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onBlur={notifyStoppedTyping}
+            placeholder={
+              isBlocked
+                ? 'You cannot message this contact'
+                : pendingImage
+                  ? 'Add a caption…'
+                  : 'Type a message'
+            }
+            disabled={isBlocked}
+            rows={1}
+            className="block w-full m-0 p-0 border-0 bg-transparent text-sm leading-6 text-text-primary placeholder:text-text-muted resize-none overflow-y-auto outline-none focus:outline-none focus:ring-0 disabled:opacity-50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          />
+        </div>
         <button
           type="submit"
           disabled={(!draft.trim() && !pendingImage) || compressing || isBlocked}
           aria-label="Send message"
           className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
         >
-          <Send size={16} />
+          <Send size={17} />
         </button>
       </form>
+
+      <DeleteMessagesDialog
+        isOpen={deleteDialogOpen}
+        count={selectedMessageIds.length}
+        canDeleteForEveryone={canDeleteForEveryone}
+        busy={deleteBusy}
+        onDeleteForMe={handleDeleteForMe}
+        onDeleteForEveryone={handleDeleteForEveryone}
+        onClose={() => setDeleteDialogOpen(false)}
+      />
     </div>
   );
 }

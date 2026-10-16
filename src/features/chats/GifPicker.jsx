@@ -66,7 +66,7 @@ export function GifPicker({ onSelect, onClose, isIncognito = false }) {
       if (e.key === 'Escape') onClose();
     }
     function onPointerDown(e) {
-      if (e.target.closest?.('[data-gif-picker], [data-gif-toggle]')) return;
+      if (e.target.closest?.('[data-gif-picker], [data-tray-toggle]')) return;
       onClose();
     }
     document.addEventListener('keydown', onKeyDown);

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore.js';
 import { usePresenceStore } from '../stores/presenceStore.js';
 import { useTypingStore } from '../stores/typingStore.js';
+import { useConnectionStore } from '../stores/connectionStore.js';
 import { getSocket } from './socketClient.js';
 
 export function useSocketEvents() {
@@ -77,8 +78,62 @@ export function useSocketEvents() {
       });
     }
 
+    // "Delete for me" done from another tab/device of ours.
+    function handleMessageHidden({ chatId, messageIds }) {
+      const hidden = new Set(messageIds);
+      queryClient.setQueryData(['messages', chatId], (old) =>
+        old ? { ...old, messages: old.messages.filter((m) => !hidden.has(m.id)) } : old
+      );
+    }
+
+    // ---- Connection lifecycle -------------------------------------
+    // socket.io's own ping/pong heartbeat decides when a connection is
+    // dead; we just react to connect/disconnect. While disconnected we
+    // can't know who is online, so presence is cleared (header shows
+    // "Connecting…"), and after a RE-connect we refetch anything that
+    // may have been missed — the server re-joins our chat rooms itself.
+    let hasConnectedBefore = false;
+    function handleConnect() {
+      useConnectionStore.getState().setConnected(true);
+      socket.emit('presence:request');
+      if (hasConnectedBefore) {
+        queryClient.invalidateQueries({ queryKey: ['messages'] });
+        queryClient.invalidateQueries({ queryKey: ['chats'] });
+        queryClient.invalidateQueries({ queryKey: ['incognitoStatus'] });
+      }
+      hasConnectedBefore = true;
+    }
+    function handleDisconnect() {
+      useConnectionStore.getState().setConnected(false);
+      usePresenceStore.getState().clear();
+    }
+    const handlePresenceSnapshot = ({ onlineUserIds }) =>
+      usePresenceStore.getState().setSnapshot(onlineUserIds);
+
+    // Phones suspend sockets in background tabs; when the tab comes back,
+    // reconnect immediately instead of waiting out the retry backoff.
+    function handleVisibility() {
+      if (document.visibilityState !== 'visible') return;
+      if (!socket.connected) socket.connect();
+      else socket.emit('presence:request');
+    }
+
     const handlePresenceOnline = ({ userId }) => usePresenceStore.getState().setOnline(userId);
-    const handlePresenceOffline = ({ userId }) => usePresenceStore.getState().setOffline(userId);
+    // Going offline also stamps "last seen" in the chat list right now —
+    // otherwise the header would briefly show the OLD last-seen time.
+    // Left null when the person's privacy setting hides it.
+    function handlePresenceOffline({ userId }) {
+      usePresenceStore.getState().setOffline(userId);
+      queryClient.setQueryData(['chats'], (old) =>
+        old
+          ? old.map((c) =>
+              c.otherParticipant?.id === userId && c.otherParticipant.lastSeenAt
+                ? { ...c, otherParticipant: { ...c.otherParticipant, lastSeenAt: new Date().toISOString() } }
+                : c
+            )
+          : old
+      );
+    }
     const handleTypingStart = ({ chatId, userId }) =>
       useTypingStore.getState().setTyping(chatId, userId);
     const handleTypingStop = ({ chatId, userId }) =>
@@ -150,6 +205,15 @@ export function useSocketEvents() {
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('message:reaction', handleMessageReaction);
     socket.on('message:read', handleMessageRead);
+    socket.on('message:hidden', handleMessageHidden);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleDisconnect);
+    socket.on('presence:snapshot', handlePresenceSnapshot);
+    document.addEventListener('visibilitychange', handleVisibility);
+    // The socket may already be connected by the time we bind.
+    if (socket.connected) handleConnect();
+    else useConnectionStore.getState().setConnected(false);
     socket.on('presence:online', handlePresenceOnline);
     socket.on('presence:offline', handlePresenceOffline);
     socket.on('typing:start', handleTypingStart);
@@ -164,6 +228,12 @@ export function useSocketEvents() {
     socket.on('incognito:ended', handleIncognitoEnded);
 
     return () => {
+      socket.off('message:hidden', handleMessageHidden);
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleDisconnect);
+      socket.off('presence:snapshot', handlePresenceSnapshot);
+      document.removeEventListener('visibilitychange', handleVisibility);
       socket.off('message:new', handleMessageNew);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);

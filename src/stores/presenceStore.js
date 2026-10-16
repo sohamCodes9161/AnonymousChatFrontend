@@ -14,4 +14,11 @@ export const usePresenceStore = create((set) => ({
       next.delete(userId);
       return { onlineUserIds: next };
     }),
+
+  // Full picture from the server (sent on connect/reconnect) — replaces
+  // whatever we had, which fixes friends who were already online before
+  // we connected and any transitions missed while disconnected.
+  setSnapshot: (userIds) => set({ onlineUserIds: new Set(userIds) }),
+
+  clear: () => set({ onlineUserIds: new Set() }),
 }));

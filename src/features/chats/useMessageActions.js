@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { editMessage, deleteMessage } from '../../api/messages.js';
+import { editMessage, deleteMessage, deleteMessagesForMe } from '../../api/messages.js';
 
 export function useEditMessage(chatId) {
   const queryClient = useQueryClient();
@@ -17,6 +17,19 @@ export function useEditMessage(chatId) {
           ),
         };
       });
+    },
+  });
+}
+
+export function useDeleteForMe(chatId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageIds) => deleteMessagesForMe(chatId, messageIds),
+    onSuccess: (_res, messageIds) => {
+      const hidden = new Set(messageIds);
+      queryClient.setQueryData(['messages', chatId], (old) =>
+        old ? { ...old, messages: old.messages.filter((m) => !hidden.has(m.id)) } : old
+      );
     },
   });
 }

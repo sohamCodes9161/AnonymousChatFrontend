@@ -3,6 +3,7 @@ import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore,
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
 import { usePresenceStore } from '../../stores/presenceStore.js';
+import { useConnectionStore } from '../../stores/connectionStore.js';
 import { GroupInfoPanel } from '../groups/GroupInfoPanel.jsx';
 import { useIncognitoStatus, useStartIncognito, useEndIncognito } from '../incognito/useIncognito.js';
 import { useRelationshipStatus } from '../friends/useFriends.js';
@@ -54,6 +55,8 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
     chat?.otherParticipant ? s.onlineUserIds.has(chat.otherParticipant.id) : false
   );
 
+  const socketConnected = useConnectionStore((s) => s.connected);
+
   const { data: incognitoSession } = useIncognitoStatus(chatId);
   const startIncognitoMutation = useStartIncognito(chatId);
   const endIncognitoMutation = useEndIncognito(chatId);
@@ -79,9 +82,13 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   // "last seen X ago" if the other person's privacy setting allows it
   // (lastSeenAt arrives as null from the backend when it doesn't —
   // this component never has to know WHY, just whether it has a value).
+  // While OUR socket is down, presence is unknowable — say so instead of
+  // showing a stale "Online"/"Offline".
   const subtitle =
     chat.type === 'direct'
-      ? isOnline
+      ? !socketConnected
+        ? 'Connecting…'
+        : isOnline
         ? 'Online'
         : chat.otherParticipant?.lastSeenAt
           ? formatLastSeen(chat.otherParticipant.lastSeenAt)
@@ -163,7 +170,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
                 avatarInitial
               )}
             </div>
-            {chat.type === 'direct' && isOnline && (
+            {chat.type === 'direct' && socketConnected && isOnline && (
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
             )}
           </div>
@@ -172,7 +179,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
             <span className="text-sm font-semibold text-text-primary truncate">{title}</span>
             <span
               className={`text-xs truncate ${
-                chat.type === 'direct' && isOnline ? 'text-status-success' : 'text-text-muted'
+                chat.type === 'direct' && socketConnected && isOnline ? 'text-status-success' : 'text-text-muted'
               }`}
             >
               {subtitle}
