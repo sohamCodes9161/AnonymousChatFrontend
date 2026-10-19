@@ -4,22 +4,21 @@ import { useAuthStore } from '../stores/authStore.js';
 import { usePresenceStore } from '../stores/presenceStore.js';
 import { useTypingStore } from '../stores/typingStore.js';
 import { useConnectionStore } from '../stores/connectionStore.js';
-import { getSocket } from './socketClient.js';
 
 export function useSocketEvents() {
   const queryClient = useQueryClient();
-  // Depend on the boolean, not the raw token — the token itself
-  // changes on every silent refresh (~every 14 min), which would
-  // otherwise tear down and rebind every listener needlessly.
   const isAuthenticated = useAuthStore((s) => Boolean(s.accessToken));
+  
+  // Reactively track the socket instance from the store
+  const socket = useConnectionStore((state) => state.socketInstance);
 
   useEffect(() => {
-    const socket = getSocket();
+    // If socket hasn't been initialized yet, do nothing and wait.
     if (!socket) return;
 
     function handleMessageNew(message) {
       queryClient.setQueryData(['messages', message.chatId], (old) => {
-        if (!old) return old; // conversation not currently open — chat list invalidation below covers the preview
+        if (!old) return old;
         const exists = old.messages.some((m) => m.id === message.id);
         return {
           ...old,
@@ -36,7 +35,6 @@ export function useSocketEvents() {
         if (!old) return old;
         return {
           ...old,
-          // The edited payload carries no reactions — keep the ones we have.
           messages: old.messages.map((m) =>
             m.id === message.id ? { ...message, reactions: m.reactions || [] } : m
           ),
@@ -44,9 +42,6 @@ export function useSocketEvents() {
       });
     }
 
-    // The summary's reactedByMe is computed for whoever TOGGLED, so it is
-    // only trusted when that was us; for someone else's toggle we keep
-    // our own per-emoji reactedByMe and only take the new counts.
     function handleMessageReaction({ chatId, messageId, userId, reactions }) {
       const myId = useAuthStore.getState().user?.id;
       queryClient.setQueryData(['messages', chatId], (old) => {
@@ -78,7 +73,6 @@ export function useSocketEvents() {
       });
     }
 
-    // "Delete for me" done from another tab/device of ours.
     function handleMessageHidden({ chatId, messageIds }) {
       const hidden = new Set(messageIds);
       queryClient.setQueryData(['messages', chatId], (old) =>
@@ -87,13 +81,10 @@ export function useSocketEvents() {
     }
 
     // ---- Connection lifecycle -------------------------------------
-    // socket.io's own ping/pong heartbeat decides when a connection is
-    // dead; we just react to connect/disconnect. While disconnected we
-    // can't know who is online, so presence is cleared (header shows
-    // "Connecting…"), and after a RE-connect we refetch anything that
-    // may have been missed — the server re-joins our chat rooms itself.
     let hasConnectedBefore = false;
+    
     function handleConnect() {
+      console.log('✅ Socket connected successfully!');
       useConnectionStore.getState().setConnected(true);
       socket.emit('presence:request');
       if (hasConnectedBefore) {
@@ -103,15 +94,21 @@ export function useSocketEvents() {
       }
       hasConnectedBefore = true;
     }
-    function handleDisconnect() {
+
+    function handleDisconnect(reason) {
+      console.log('❌ Socket disconnected:', reason);
       useConnectionStore.getState().setConnected(false);
       usePresenceStore.getState().clear();
     }
+
+    function handleConnectError(err) {
+      console.error('⚠️ Socket connect_error:', err.message);
+      useConnectionStore.getState().setConnected(false);
+    }
+
     const handlePresenceSnapshot = ({ onlineUserIds }) =>
       usePresenceStore.getState().setSnapshot(onlineUserIds);
 
-    // Phones suspend sockets in background tabs; when the tab comes back,
-    // reconnect immediately instead of waiting out the retry backoff.
     function handleVisibility() {
       if (document.visibilityState !== 'visible') return;
       if (!socket.connected) socket.connect();
@@ -119,9 +116,7 @@ export function useSocketEvents() {
     }
 
     const handlePresenceOnline = ({ userId }) => usePresenceStore.getState().setOnline(userId);
-    // Going offline also stamps "last seen" in the chat list right now —
-    // otherwise the header would briefly show the OLD last-seen time.
-    // Left null when the person's privacy setting hides it.
+    
     function handlePresenceOffline({ userId }) {
       usePresenceStore.getState().setOffline(userId);
       queryClient.setQueryData(['chats'], (old) =>
@@ -134,24 +129,21 @@ export function useSocketEvents() {
           : old
       );
     }
-    const handleTypingStart = ({ chatId, userId }) =>
-      useTypingStore.getState().setTyping(chatId, userId);
-    const handleTypingStop = ({ chatId, userId }) =>
-      useTypingStore.getState().clearTyping(chatId, userId);
+    
+    const handleTypingStart = ({ chatId, userId }) => useTypingStore.getState().setTyping(chatId, userId);
+    const handleTypingStop = ({ chatId, userId }) => useTypingStore.getState().clearTyping(chatId, userId);
 
     function invalidateFriendsAndNotifications() {
       queryClient.invalidateQueries({ queryKey: ['friends'] });
       queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     }
+    
     function invalidateChatsAndNotifications() {
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     }
 
-    // Incognito — direct cache writes, not invalidation, so the banner
-    // and grace-period countdown update instantly rather than waiting
-    // on a refetch round-trip.
     function handleIncognitoStarted(payload) {
       queryClient.setQueryData(['incognitoStatus', payload.chatId], {
         status: 'active',
@@ -176,16 +168,9 @@ export function useSocketEvents() {
 
     function handleIncognitoEnded(payload) {
       queryClient.setQueryData(['incognitoStatus', payload.chatId], null);
-      // Messages were hard-deleted server-side — refetch, don't just
-      // leave the (now-wrong) cached list showing them.
       queryClient.invalidateQueries({ queryKey: ['messages', payload.chatId] });
     }
 
-    // Read receipts — patches the chat list cache directly (not the
-    // messages cache) since that's where otherParticipant.lastReadMessageId
-    // lives, which is what MessageBubble compares each message id
-    // against to decide its tick color. Ignores our OWN read receipt
-    // echoing back — only the other participant's matters here.
     function handleMessageRead({ chatId, userId, lastReadMessageId }) {
       const myId = useAuthStore.getState().user?.id;
       if (userId === myId) return;
@@ -200,20 +185,17 @@ export function useSocketEvents() {
       });
     }
 
+    // Attach Listeners
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
     socket.on('message:new', handleMessageNew);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('message:reaction', handleMessageReaction);
     socket.on('message:read', handleMessageRead);
     socket.on('message:hidden', handleMessageHidden);
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    socket.on('connect_error', handleDisconnect);
     socket.on('presence:snapshot', handlePresenceSnapshot);
-    document.addEventListener('visibilitychange', handleVisibility);
-    // The socket may already be connected by the time we bind.
-    if (socket.connected) handleConnect();
-    else useConnectionStore.getState().setConnected(false);
     socket.on('presence:online', handlePresenceOnline);
     socket.on('presence:offline', handlePresenceOffline);
     socket.on('typing:start', handleTypingStart);
@@ -227,18 +209,27 @@ export function useSocketEvents() {
     socket.on('incognito:grace_period_cancelled', handleIncognitoGracePeriodCancelled);
     socket.on('incognito:ended', handleIncognitoEnded);
 
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // If socket is already connected when effect runs, trigger handleConnect
+    if (socket.connected) {
+      handleConnect();
+    } else {
+      useConnectionStore.getState().setConnected(false);
+    }
+
+    // Cleanup Listeners on unmount or socket change
     return () => {
-      socket.off('message:hidden', handleMessageHidden);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('connect_error', handleDisconnect);
-      socket.off('presence:snapshot', handlePresenceSnapshot);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      socket.off('connect_error', handleConnectError);
       socket.off('message:new', handleMessageNew);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);
       socket.off('message:reaction', handleMessageReaction);
       socket.off('message:read', handleMessageRead);
+      socket.off('message:hidden', handleMessageHidden);
+      socket.off('presence:snapshot', handlePresenceSnapshot);
       socket.off('presence:online', handlePresenceOnline);
       socket.off('presence:offline', handlePresenceOffline);
       socket.off('typing:start', handleTypingStart);
@@ -251,6 +242,8 @@ export function useSocketEvents() {
       socket.off('incognito:grace_period_started', handleIncognitoGracePeriodStarted);
       socket.off('incognito:grace_period_cancelled', handleIncognitoGracePeriodCancelled);
       socket.off('incognito:ended', handleIncognitoEnded);
+      
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [queryClient, isAuthenticated]);
+  }, [queryClient, isAuthenticated, socket]); // NOTE: `socket` is now in the dependency array!
 }
