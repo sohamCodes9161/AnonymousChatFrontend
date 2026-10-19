@@ -23,6 +23,7 @@ import { EmojiPicker } from './EmojiPicker.jsx';
 import { SelectionBar } from './SelectionBar.jsx';
 import { DeleteMessagesDialog } from './DeleteMessagesDialog.jsx';
 import { useDismiss } from '../../hooks/useDismiss.js';
+import { usePageActive } from '../../hooks/usePageActive.js';
 import { copyToClipboard } from '../../utils/clipboard.js';
 import { isGiphyConfigured } from '../../api/giphy.js';
 import { useIncognitoStatus } from '../incognito/useIncognito.js';
@@ -229,16 +230,26 @@ export function ConversationView() {
     if (el && stickToBottomRef.current) el.scrollTo({ top: el.scrollHeight });
   }
 
+  // Receiver side: mark the newest message read as soon as it's actually
+  // on screen — i.e. the chat is open AND the tab is visible and focused —
+  // and again when the tab regains focus. The ref stops repeat requests
+  // for the same message (this effect also re-runs on reactions, edits…).
+  const pageActive = usePageActive();
+  const lastMarkedRef = useRef({ chatId: null, messageId: null });
   useEffect(() => {
-    if (!messages?.length) return;
+    if (!pageActive || !messages?.length) return;
     // Optimistic entries carry a client-side temp id, not a real
     // ObjectId — marking those as "read" would just be rejected.
     const lastReal = [...messages].reverse().find((m) => m.status !== 'sending' && m.status !== 'failed');
     if (!lastReal) return;
+    const marked = lastMarkedRef.current;
+    if (marked.chatId === chatId && marked.messageId === lastReal.id) return;
+    lastMarkedRef.current = { chatId, messageId: lastReal.id };
     markRead(chatId, lastReal.id).catch(() => {
-      /* non-critical — unread count staying stale isn't worth surfacing an error for */
+      // Allow a retry on the next update; not worth an error toast.
+      lastMarkedRef.current = { chatId: null, messageId: null };
     });
-  }, [chatId, messages]);
+  }, [chatId, messages, pageActive]);
 
   // Auto-grow the textarea up to a fixed max height, then it scrolls
   // internally rather than pushing the rest of the layout around.
@@ -366,6 +377,12 @@ export function ConversationView() {
 
   function clearSelection() {
     setSelectedMessageIds([]);
+  }
+
+  // Swipe-to-reply on a message row.
+  function handleSwipeReply(message) {
+    setReplyingTo(message);
+    textareaRef.current?.focus();
   }
 
   function handleReplySelected() {
@@ -615,6 +632,7 @@ export function ConversationView() {
                 selected={selectedMessageIds.includes(message.id)}
                 onLongPress={startSelection}
                 onToggleSelect={toggleSelection}
+                onReply={handleSwipeReply}
                 isEditing={editingId === message.id}
                 onSaveEdit={handleSaveEdit}
                 onCancelEdit={() => setEditingId(null)}

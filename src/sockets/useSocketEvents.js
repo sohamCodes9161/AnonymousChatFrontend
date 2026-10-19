@@ -16,16 +16,41 @@ export function useSocketEvents() {
     // If socket hasn't been initialized yet, do nothing and wait.
     if (!socket) return;
 
+    // The server echoes every message to everyone in the chat room — the
+    // sender included — and the sender ALSO gets the HTTP response, in
+    // either order. So this must be idempotent, and must recognise the
+    // sender's own optimistic copy (id = clientMessageId) rather than
+    // treat it as a different message:
+    //   1. same real id already cached  -> update in place
+    //   2. our pending copy (same clientMessageId) -> swap it for the real one
+    //   3. otherwise -> append (incl. our own messages sent from another device)
+    // Own messages are deliberately NOT ignored: that would hide messages
+    // sent from our other tabs/devices and break if the HTTP response is lost.
     function handleMessageNew(message) {
       queryClient.setQueryData(['messages', message.chatId], (old) => {
         if (!old) return old;
-        const exists = old.messages.some((m) => m.id === message.id);
-        return {
-          ...old,
-          messages: exists
-            ? old.messages.map((m) => (m.id === message.id ? message : m))
-            : [...old.messages, message],
-        };
+
+        if (old.messages.some((m) => m.id === message.id)) {
+          return {
+            ...old,
+            messages: old.messages.map((m) =>
+              m.id === message.id ? { ...message, reactions: m.reactions || message.reactions || [] } : m
+            ),
+          };
+        }
+
+        if (message.clientMessageId) {
+          const pendingIndex = old.messages.findIndex(
+            (m) => m.status === 'sending' && m.clientMessageId === message.clientMessageId
+          );
+          if (pendingIndex !== -1) {
+            const next = [...old.messages];
+            next[pendingIndex] = message;
+            return { ...old, messages: next };
+          }
+        }
+
+        return { ...old, messages: [...old.messages, message] };
       });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     }
@@ -84,7 +109,6 @@ export function useSocketEvents() {
     let hasConnectedBefore = false;
     
     function handleConnect() {
-      console.log('✅ Socket connected successfully!');
       useConnectionStore.getState().setConnected(true);
       socket.emit('presence:request');
       if (hasConnectedBefore) {
@@ -95,8 +119,7 @@ export function useSocketEvents() {
       hasConnectedBefore = true;
     }
 
-    function handleDisconnect(reason) {
-      console.log('❌ Socket disconnected:', reason);
+    function handleDisconnect() {
       useConnectionStore.getState().setConnected(false);
       usePresenceStore.getState().clear();
     }
@@ -171,17 +194,25 @@ export function useSocketEvents() {
       queryClient.invalidateQueries({ queryKey: ['messages', payload.chatId] });
     }
 
-    function handleMessageRead({ chatId, userId, lastReadMessageId }) {
+    // The conversation draws its ticks from the CHAT's
+    // otherParticipant.lastReadMessageId (not from the messages cache), so
+    // that's what we patch. Two guards against stale data:
+    //  - cancel any in-flight chats refetch first, so an older response
+    //    can't land after this and flip the ticks back to grey;
+    //  - read positions only move forward (ObjectIds sort by time).
+    async function handleMessageRead({ chatId, userId, lastReadMessageId }) {
       const myId = useAuthStore.getState().user?.id;
       if (userId === myId) return;
 
+      await queryClient.cancelQueries({ queryKey: ['chats'] });
       queryClient.setQueryData(['chats'], (old) => {
         if (!old) return old;
-        return old.map((c) =>
-          c._id === chatId && c.otherParticipant
-            ? { ...c, otherParticipant: { ...c.otherParticipant, lastReadMessageId } }
-            : c
-        );
+        return old.map((c) => {
+          if (c._id !== chatId || !c.otherParticipant) return c;
+          const current = c.otherParticipant.lastReadMessageId;
+          if (current && current >= lastReadMessageId) return c;
+          return { ...c, otherParticipant: { ...c.otherParticipant, lastReadMessageId } };
+        });
       });
     }
 

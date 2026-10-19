@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Check, X, CheckCheck, Clock } from 'lucide-react';
+import { Check, X, CheckCheck, Clock, CornerUpLeft } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useLongPress } from '../../hooks/useLongPress.js';
+import { useSwipeToReply } from '../../hooks/useSwipeToReply.js';
 import { ImageLightbox } from '../../components/ImageLightbox.jsx';
 
 const PARTICIPANT_COLOR_CLASSES = [
@@ -106,6 +107,7 @@ export function MessageBubble({
   selected = false,
   onLongPress,
   onToggleSelect,
+  onReply,
   isEditing = false,
   onSaveEdit,
   onCancelEdit,
@@ -128,6 +130,43 @@ export function MessageBubble({
     onLongPress: () => onLongPress?.(message.id),
     onTap: () => onToggleSelect?.(message.id),
   });
+
+  // Swipe right to reply (touch). Off while selecting/editing and for
+  // messages with nothing to reply to.
+  const swipe = useSwipeToReply({
+    enabled: selectable && !selectionMode && !isEditing,
+    onReply: () => onReply?.(message),
+  });
+
+  // One set of row handlers driving both gestures. Long-press cancels
+  // itself once the finger moves, so the two never fire together.
+  const rowHandlers = {
+    ...press,
+    onPointerDown(e) {
+      press.onPointerDown(e);
+      swipe.handlers.onPointerDown(e);
+    },
+    onPointerMove(e) {
+      press.onPointerMove(e);
+      swipe.handlers.onPointerMove(e);
+    },
+    onPointerUp(e) {
+      press.onPointerUp(e);
+      swipe.handlers.onPointerUp(e);
+    },
+    onPointerCancel(e) {
+      press.onPointerCancel(e);
+      swipe.handlers.onPointerCancel(e);
+    },
+    onClickCapture(e) {
+      if (swipe.didSwipe()) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      press.onClickCapture(e);
+    },
+  };
 
   // Seed the edit box each time editing starts.
   useEffect(() => {
@@ -195,11 +234,11 @@ export function MessageBubble({
   return (
     <>
     <div
-      {...press}
+      {...rowHandlers}
       aria-selected={selectionMode ? selected : undefined}
       // Text selection is off on touch (it would fight the long-press) and
       // while selecting; desktop keeps normal text selection otherwise.
-      className={`group flex ${isMine ? 'justify-end' : 'justify-start'} px-3 md:px-4 ${
+      className={`group flex touch-pan-y [overflow-x:clip] ${isMine ? 'justify-end' : 'justify-start'} px-3 md:px-4 ${
         groupedWithNext ? 'pb-1' : 'pb-3'
       } ${hasReactions ? 'mb-3' : ''} ${isSending ? '' : 'animate-message-in'} ${
         selectable ? 'select-none [-webkit-touch-callout:none]' : ''
@@ -207,7 +246,19 @@ export function MessageBubble({
         selected ? 'bg-accentSubtle' : ''
       } ${selectionMode && selectable ? 'cursor-pointer' : ''} transition-colors duration-fast`}
     >
-      <div className={`min-w-0 max-w-[75%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+      <div
+        ref={swipe.contentRef}
+        className={`relative min-w-0 max-w-[75%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+      >
+        {/* Revealed as the message is dragged right; travels with it. */}
+        <div
+          ref={swipe.iconRef}
+          aria-hidden="true"
+          className="absolute top-1/2 right-full mr-3 w-8 h-8 rounded-full bg-surface-secondary text-text-secondary flex items-center justify-center pointer-events-none"
+          style={{ opacity: 0, transform: 'translateY(-50%) scale(0.6)' }}
+        >
+          <CornerUpLeft size={16} />
+        </div>
         {showSenderHeader && !isMine && (
           <div className="flex items-center gap-1.5 mb-1 pt-1">
             <div className="w-5 h-5 rounded-pill bg-surface-secondary overflow-hidden flex items-center justify-center text-[10px] font-semibold text-text-secondary flex-shrink-0 ring-1 ring-border">
