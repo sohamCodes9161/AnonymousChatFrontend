@@ -13,3 +13,8 @@ export function uploadAvatar(file) {
   formData.append('avatar', file);
   return apiUpload('/users/me/avatar', formData);
 }
+
+// Permanently deletes the account. Password-confirmed server-side.
+export function deleteAccount(password) {
+  return apiFetch('/users/me', { method: 'DELETE', body: { password } });
+}

@@ -1,3 +1,4 @@
+import { confirm } from '../../stores/confirmStore.js';
 import { useNavigate } from 'react-router-dom';
 import { Ban } from 'lucide-react';
 import { useFriends } from './useFriends.js';
@@ -16,10 +17,17 @@ export function FriendsList() {
     navigate(`/chats/${res.data.chat._id}`);
   }
 
-  function handleBlock(friendId, displayName) {
+  async function handleBlock(friendId, displayName) {
     // Blocking atomically removes the friendship too — this person
     // disappears from this list as soon as it succeeds.
-    if (window.confirm(`Block ${displayName}? This will also remove them as a friend.`)) {
+    if (
+      await confirm({
+        title: `Block ${displayName}?`,
+        message: 'This also removes them as a friend.',
+        confirmLabel: 'Block',
+        danger: true,
+      })
+    ) {
       blockMutation.mutate(friendId);
     }
   }

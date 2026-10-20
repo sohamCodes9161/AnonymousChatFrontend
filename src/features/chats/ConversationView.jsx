@@ -11,6 +11,7 @@ import { useTypingIndicator } from './useTypingIndicator.js';
 import { useChats } from './useChats.js';
 import { useGroupMembers } from '../groups/useGroup.js';
 import { useRelationshipStatus } from '../friends/useFriends.js';
+import { useUnblockUser } from '../friends/useFriendActions.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { toast } from '../../stores/toastStore.js';
 import { messagePreviewText } from '../../utils/messagePreview.js';
@@ -22,6 +23,7 @@ import { GifPicker } from './GifPicker.jsx';
 import { EmojiPicker } from './EmojiPicker.jsx';
 import { SelectionBar } from './SelectionBar.jsx';
 import { DeleteMessagesDialog } from './DeleteMessagesDialog.jsx';
+import { ForwardDialog } from './ForwardDialog.jsx';
 import { useDismiss } from '../../hooks/useDismiss.js';
 import { usePageActive } from '../../hooks/usePageActive.js';
 import { copyToClipboard } from '../../utils/clipboard.js';
@@ -95,7 +97,12 @@ export function ConversationView() {
   // and shows a banner, rather than letting the send silently fail
   // server-side with no explanation.
   const { data: relationship } = useRelationshipStatus(!isGroup ? chat?.otherParticipant?.id : null);
-  const isBlocked = relationship?.status === 'blocked_by_me' || relationship?.status === 'blocked_by_them';
+  const isDeletedContact = Boolean(!isGroup && chat?.otherParticipant?.deleted);
+  const isBlocked =
+    relationship?.status === 'blocked_by_me' ||
+    relationship?.status === 'blocked_by_them' ||
+    isDeletedContact;
+  const unblockMutation = useUnblockUser();
 
   const messagesById = useMemo(() => {
     if (!data?.messages) return new Map();
@@ -124,6 +131,7 @@ export function ConversationView() {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [forwardOpen, setForwardOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const editMutation = useEditMessage(chatId);
   const deleteEveryoneMutation = useDeleteMessage(chatId);
@@ -179,6 +187,24 @@ export function ConversationView() {
     const ids = new Set(selectedMessageIds);
     return (messages || []).filter((m) => ids.has(m.id)); // chat order, not tap order
   }, [messages, selectedMessageIds]);
+
+  // Text, GIF and photo messages that are live and not part of an Incognito
+  // session (Incognito content must never leave its session).
+  const forwardableIds = useMemo(
+    () =>
+      selectedMessages
+        .filter(
+          (m) =>
+            ['text', 'gif', 'image'].includes(m.type) &&
+            m.status !== 'deleted' &&
+            m.status !== 'sending' &&
+            m.status !== 'failed' &&
+            !m.incognitoSessionId
+        )
+        .map((m) => m.id),
+    [selectedMessages]
+  );
+  const canForward = forwardableIds.length > 0 && forwardableIds.length <= 20;
 
   // Live updates can remove or delete what's selected/being edited (the
   // sender deletes it, an Incognito session ends, "delete for me" from
@@ -548,6 +574,8 @@ export function ConversationView() {
           onCopy={handleCopySelected}
           onDelete={() => setDeleteDialogOpen(true)}
           onReact={handleReactSelected}
+          onForward={() => setForwardOpen(true)}
+          canForward={canForward}
         />
       ) : (
         <ChatHeader searchOpen={searchOpen} onToggleSearch={() => setSearchOpen((o) => !o)} />
@@ -562,10 +590,24 @@ export function ConversationView() {
       )}
       <IncognitoBanner chatId={chatId} />
       {isBlocked && (
-        <div className="bg-statusErrorSubtle border-b border-status-error px-4 py-2 text-xs text-status-error text-center">
-          {relationship.status === 'blocked_by_me'
-            ? 'You blocked this contact. Unblock them from Settings to send messages again.'
-            : 'You can no longer send messages in this conversation.'}
+        <div className="bg-statusErrorSubtle border-b border-status-error px-4 py-2 text-xs text-status-error flex items-center justify-center gap-3">
+          <span>
+            {isDeletedContact
+              ? 'This account was deleted. You can no longer send messages here.'
+              : relationship?.status === 'blocked_by_me'
+                ? 'You blocked this contact.'
+                : 'You can no longer send messages in this conversation.'}
+          </span>
+          {!isDeletedContact && relationship?.status === 'blocked_by_me' && (
+            <button
+              type="button"
+              onClick={() => unblockMutation.mutate(chat.otherParticipant.id)}
+              disabled={unblockMutation.isPending}
+              className="font-semibold underline disabled:opacity-50"
+            >
+              Unblock
+            </button>
+          )}
         </div>
       )}
 
@@ -775,6 +817,17 @@ export function ConversationView() {
           <Send size={17} />
         </button>
       </form>
+
+      <ForwardDialog
+        isOpen={forwardOpen}
+        sourceChatId={chatId}
+        messageIds={forwardableIds}
+        onClose={() => setForwardOpen(false)}
+        onDone={() => {
+          setForwardOpen(false);
+          clearSelection();
+        }}
+      />
 
       <DeleteMessagesDialog
         isOpen={deleteDialogOpen}

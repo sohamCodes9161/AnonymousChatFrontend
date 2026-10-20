@@ -22,6 +22,7 @@ function useInvalidateFriendsAndBlocked() {
     queryClient.invalidateQueries({ queryKey: ['friends'] });
     queryClient.invalidateQueries({ queryKey: ['friendRequests'] });
     queryClient.invalidateQueries({ queryKey: ['blockedUsers'] });
+    queryClient.invalidateQueries({ queryKey: ['relationshipStatus'] });
     // A block/unblock changes relationship status — chat list previews
     // and any open conversation's send-permission depend on it too.
     queryClient.invalidateQueries({ queryKey: ['chats'] });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, CheckCheck, Clock, CornerUpLeft } from 'lucide-react';
+import { Check, X, CheckCheck, Clock, CornerUpLeft, Forward } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useLongPress } from '../../hooks/useLongPress.js';
 import { useSwipeToReply } from '../../hooks/useSwipeToReply.js';
@@ -299,6 +299,11 @@ export function MessageBubble({
                 highlighted ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-surface-primary' : ''
               }`}
             >
+              {message.forwarded && !isDeleted && (
+                <div className="flex items-center gap-1 px-2.5 pt-1.5 text-[11px] italic opacity-75">
+                  <Forward size={11} /> Forwarded
+                </div>
+              )}
               {replyPreview && (
                 <div
                   className={`mx-1.5 mt-1.5 mb-0.5 px-2 py-1 rounded-md border-l-4 text-xs bg-black/10 ${

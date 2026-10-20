@@ -9,6 +9,7 @@ import { ChatLayout } from './features/layout/ChatLayout.jsx';
 import { EmptyChatState } from './features/layout/EmptyChatState.jsx';
 import { ConversationView } from './features/chats/ConversationView.jsx';
 import { ToastContainer } from './components/ToastContainer.jsx';
+import { ConfirmHost } from './components/ConfirmHost.jsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +44,7 @@ export default function App() {
             </Routes>
           </AuthBootstrap>
           <ToastContainer />
+          <ConfirmHost />
         </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>

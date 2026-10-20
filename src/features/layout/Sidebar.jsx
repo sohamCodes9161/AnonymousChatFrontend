@@ -4,15 +4,13 @@ import { ChatList } from '../chats/ChatList.jsx';
 import { FriendsPanel } from '../friends/FriendsPanel.jsx';
 import { NotificationBell } from '../notifications/NotificationBell.jsx';
 import { CreateGroupModal } from '../groups/CreateGroupModal.jsx';
-import { ProfileSettingsModal } from '../profile/ProfileSettingsModal.jsx';
-import { SettingsModal } from '../settings/SettingsModal.jsx';
+import { SettingsPanel } from '../settings/SettingsPanel.jsx';
 import { useAuth } from '../auth/useAuth.js';
 
 export function Sidebar() {
   const [tab, setTab] = useState('chats');
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState(null); // null = closed
   const { user, logout } = useAuth();
   const initial = (user?.displayName || '?').charAt(0).toUpperCase();
 
@@ -20,7 +18,7 @@ export function Sidebar() {
     <div className="w-full flex-shrink-0 border-r border-border flex flex-col h-full bg-surface-primary">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <button
-          onClick={() => setProfileOpen(true)}
+          onClick={() => setSettingsSection('profile')}
           className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity duration-fast"
           aria-label="Edit profile"
         >
@@ -36,7 +34,7 @@ export function Sidebar() {
         <div className="flex items-center gap-3 flex-shrink-0">
           <NotificationBell />
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setSettingsSection('privacy')}
             className="text-text-secondary hover:text-text-primary transition-colors duration-fast"
             aria-label="Settings"
           >
@@ -79,8 +77,11 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto">{tab === 'chats' ? <ChatList /> : <FriendsPanel />}</div>
 
       <CreateGroupModal isOpen={createGroupOpen} onClose={() => setCreateGroupOpen(false)} />
-      <ProfileSettingsModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel
+        isOpen={settingsSection !== null}
+        initialSection={settingsSection || 'profile'}
+        onClose={() => setSettingsSection(null)}
+      />
     </div>
   );
 }

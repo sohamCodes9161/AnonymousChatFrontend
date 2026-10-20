@@ -1,4 +1,4 @@
-import { X, CornerUpLeft, Pencil, Copy, Trash2 } from 'lucide-react';
+import { X, CornerUpLeft, Pencil, Copy, Trash2, Forward } from 'lucide-react';
 
 // Must mirror the backend's ALLOWED_EMOJIS (reactions.service.js) — the
 // server rejects anything else.
@@ -25,7 +25,7 @@ function BarButton({ label, onClick, disabled, children }) {
  * for exactly one message (Edit: yours, and text); the reaction dock
  * likewise only appears for a single selection.
  */
-export function SelectionBar({ selectedMessages, currentUserId, onClose, onReply, onEdit, onCopy, onDelete, onReact }) {
+export function SelectionBar({ selectedMessages, currentUserId, onClose, onReply, onEdit, onCopy, onDelete, onReact, onForward, canForward }) {
   const count = selectedMessages.length;
   const single = count === 1 ? selectedMessages[0] : null;
   const canEdit = Boolean(single && single.senderId === currentUserId && single.type === 'text');
@@ -49,6 +49,9 @@ export function SelectionBar({ selectedMessages, currentUserId, onClose, onReply
         </BarButton>
         <BarButton label="Copy" onClick={onCopy} disabled={!canCopy}>
           <Copy size={18} />
+        </BarButton>
+        <BarButton label="Forward" onClick={onForward} disabled={!canForward}>
+          <Forward size={18} />
         </BarButton>
         <BarButton label="Delete" onClick={onDelete}>
           <Trash2 size={19} />

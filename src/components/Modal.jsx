@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 
-export function Modal({ isOpen, onClose, title, children }) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) {
   if (!isOpen) return null;
   return (
     <div
@@ -8,7 +8,7 @@ export function Modal({ isOpen, onClose, title, children }) {
       onClick={onClose}
     >
       <div
-        className="bg-surface-elevated rounded-lg shadow-elevation-3 w-full max-w-md mx-4 max-h-[80vh] overflow-y-auto"
+        className={`bg-surface-elevated rounded-lg shadow-elevation-3 w-full ${maxWidth} mx-4 max-h-[85vh] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">

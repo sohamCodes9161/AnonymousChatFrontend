@@ -153,6 +153,31 @@ export function useSocketEvents() {
       );
     }
     
+    // Server says a pair can no longer see each other's presence (block).
+    function handlePresenceHidden({ userId }) {
+      usePresenceStore.getState().setOffline(userId);
+      queryClient.setQueryData(['chats'], (old) =>
+        old
+          ? old.map((c) =>
+              c.otherParticipant?.id === userId
+                ? { ...c, otherParticipant: { ...c.otherParticipant, lastSeenAt: null, lastReadMessageId: null } }
+                : c
+            )
+          : old
+      );
+      queryClient.invalidateQueries({ queryKey: ['relationshipStatus'] });
+    }
+
+    // A user deleted their account: their messages are gone.
+    function handleMessagesPurged({ chatId, senderId }) {
+      queryClient.setQueryData(['messages', chatId], (old) =>
+        old ? { ...old, messages: old.messages.filter((m) => m.senderId !== senderId) } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    }
+
+    const handleChatsRefresh = () => queryClient.invalidateQueries({ queryKey: ['chats'] });
+
     const handleTypingStart = ({ chatId, userId }) => useTypingStore.getState().setTyping(chatId, userId);
     const handleTypingStop = ({ chatId, userId }) => useTypingStore.getState().clearTyping(chatId, userId);
 
@@ -229,6 +254,9 @@ export function useSocketEvents() {
     socket.on('presence:snapshot', handlePresenceSnapshot);
     socket.on('presence:online', handlePresenceOnline);
     socket.on('presence:offline', handlePresenceOffline);
+    socket.on('presence:hidden', handlePresenceHidden);
+    socket.on('messages:purged', handleMessagesPurged);
+    socket.on('chats:refresh', handleChatsRefresh);
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
     socket.on('friend:request_received', invalidateFriendsAndNotifications);
@@ -263,6 +291,9 @@ export function useSocketEvents() {
       socket.off('presence:snapshot', handlePresenceSnapshot);
       socket.off('presence:online', handlePresenceOnline);
       socket.off('presence:offline', handlePresenceOffline);
+      socket.off('presence:hidden', handlePresenceHidden);
+      socket.off('messages:purged', handleMessagesPurged);
+      socket.off('chats:refresh', handleChatsRefresh);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
       socket.off('friend:request_received', invalidateFriendsAndNotifications);

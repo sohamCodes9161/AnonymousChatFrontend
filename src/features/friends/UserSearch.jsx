@@ -1,3 +1,4 @@
+import { confirm } from '../../stores/confirmStore.js';
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban } from 'lucide-react';
@@ -34,8 +35,15 @@ export function UserSearch() {
     friends: 'Friends',
   };
 
-  function handleBlock(userId, displayName) {
-    if (window.confirm(`Block ${displayName}?`)) {
+  async function handleBlock(userId, displayName) {
+    if (
+      await confirm({
+        title: `Block ${displayName}?`,
+        message: "They won't be able to message you or see when you're online.",
+        confirmLabel: 'Block',
+        danger: true,
+      })
+    ) {
       blockMutation.mutate(userId, {
         onSuccess: () => {
           // Search is block-aware server-side — refetch so this result

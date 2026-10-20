@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft, Search } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
+import { confirm } from '../../stores/confirmStore.js';
+import { ContactInfoPanel } from './ContactInfoPanel.jsx';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { useConnectionStore } from '../../stores/connectionStore.js';
 import { GroupInfoPanel } from '../groups/GroupInfoPanel.jsx';
@@ -48,6 +50,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   const navigate = useNavigate();
   const { data: chats } = useChats(); // already cached from the sidebar — no extra fetch
   const [infoOpen, setInfoOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = chats?.find((c) => c._id === chatId);
 
@@ -101,11 +104,18 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   const avatarUrl = chat.type === 'direct' ? chat.otherParticipant?.avatarUrl : chat.avatarUrl;
   const avatarInitial = (title || '?').charAt(0).toUpperCase();
 
-  function handleBlock() {
-    if (window.confirm(`Block ${chat.otherParticipant?.displayName}?`)) {
+  async function handleBlock() {
+    setMenuOpen(false);
+    if (
+      await confirm({
+        title: `Block ${chat.otherParticipant?.displayName}?`,
+        message: "They won't be able to message you or see when you're online.",
+        confirmLabel: 'Block',
+        danger: true,
+      })
+    ) {
       blockMutation.mutate(chat.otherParticipant.id);
     }
-    setMenuOpen(false);
   }
 
   function handleUnblock() {
@@ -144,11 +154,18 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
     setMenuOpen(false);
   }
 
-  function handleClear() {
-    if (window.confirm('Clear this chat for you? The other participant will still see the full history.')) {
+  async function handleClear() {
+    setMenuOpen(false);
+    if (
+      await confirm({
+        title: 'Clear this chat?',
+        message: 'Only your view is cleared. Everyone else keeps the full history.',
+        confirmLabel: 'Clear chat',
+        danger: true,
+      })
+    ) {
       clearMutation.mutate(chatId);
     }
-    setMenuOpen(false);
   }
 
   return (
@@ -162,6 +179,12 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
           >
             <ArrowLeft size={20} />
           </button>
+          <button
+            type="button"
+            onClick={() => (chat.type === 'direct' ? setContactOpen(true) : setInfoOpen(true))}
+            className="flex items-center gap-2.5 min-w-0 text-left rounded-md"
+            aria-label={chat.type === 'direct' ? 'Contact info' : 'Group info'}
+          >
           <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center text-xs font-semibold overflow-hidden ring-2 ring-surface-primary">
               {avatarUrl ? (
@@ -185,6 +208,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
               {subtitle}
             </span>
           </div>
+          </button>
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           {onToggleSearch && (
@@ -283,6 +307,9 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
           </div>
         )}
       </div>
+      {chat.type === 'direct' && (
+        <ContactInfoPanel chat={chat} isOpen={contactOpen} onClose={() => setContactOpen(false)} />
+      )}
       {chat.type === 'group' && (
         <GroupInfoPanel chatId={chatId} isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
       )}

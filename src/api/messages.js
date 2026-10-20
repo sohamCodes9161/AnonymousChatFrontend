@@ -42,3 +42,11 @@ export function editMessage(messageId, text) {
 export function deleteMessage(messageId) {
   return apiFetch(`/messages/${messageId}`, { method: 'DELETE' });
 }
+
+// Forward up to 20 messages from one chat into up to 5 others.
+export function forwardMessages(chatId, messageIds, targetChatIds) {
+  return apiFetch(`/chats/${chatId}/messages/forward`, {
+    method: 'POST',
+    body: { messageIds, targetChatIds },
+  });
+}
