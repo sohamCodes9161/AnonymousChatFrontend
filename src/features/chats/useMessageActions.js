@@ -4,7 +4,7 @@ import { editMessage, deleteMessage, deleteMessagesForMe } from '../../api/messa
 export function useEditMessage(chatId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ messageId, text }) => editMessage(messageId, text),
+    mutationFn: ({ messageId, text, mentions }) => editMessage(messageId, text, mentions),
     onSuccess: (res) => {
       const updated = res.data.message;
       queryClient.setQueryData(['messages', chatId], (old) => {

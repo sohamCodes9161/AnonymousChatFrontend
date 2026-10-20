@@ -23,10 +23,10 @@ export function listMessages(chatId, before) {
 
 // Text messages pass `text`; other kinds (currently 'gif') pass
 // `type` + `content` explicitly.
-export function sendMessage(chatId, { text, type = 'text', content, clientMessageId, replyToMessageId }) {
+export function sendMessage(chatId, { text, type = 'text', content, clientMessageId, replyToMessageId, mentions }) {
   return apiFetch(`/chats/${chatId}/messages`, {
     method: 'POST',
-    body: { type, content: content ?? { text }, clientMessageId, replyToMessageId },
+    body: { type, content: content ?? { text }, clientMessageId, replyToMessageId, mentions },
   });
 }
 
@@ -35,8 +35,8 @@ export function deleteMessagesForMe(chatId, messageIds) {
   return apiFetch(`/chats/${chatId}/messages/delete-for-me`, { method: 'POST', body: { messageIds } });
 }
 
-export function editMessage(messageId, text) {
-  return apiFetch(`/messages/${messageId}`, { method: 'PATCH', body: { content: { text } } });
+export function editMessage(messageId, text, mentions) {
+  return apiFetch(`/messages/${messageId}`, { method: 'PATCH', body: { content: { text }, mentions } });
 }
 
 export function deleteMessage(messageId) {
@@ -49,4 +49,17 @@ export function forwardMessages(chatId, messageIds, targetChatIds) {
     method: 'POST',
     body: { messageIds, targetChatIds },
   });
+}
+
+// Search every chat the user is in (distinct from per-chat searchMessages).
+export function searchAllMessages(q) {
+  return apiFetch(`/chats/search/messages?q=${encodeURIComponent(q)}`);
+}
+
+// Field name 'audio' must match the backend's multer .single('audio').
+export function sendVoiceMessage(chatId, blob, duration, filename) {
+  const formData = new FormData();
+  formData.append('audio', blob, filename);
+  formData.append('duration', String(Math.round(duration)));
+  return apiUpload(`/chats/${chatId}/messages/voice`, formData);
 }

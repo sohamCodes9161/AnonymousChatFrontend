@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { X, Send, Plus, Smile, ImagePlus } from 'lucide-react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { X, Send, Plus, Smile, ImagePlus, Mic, Trash2 } from 'lucide-react';
 import { useMessages } from './useMessages.js';
 import { useSendMessage } from './useSendMessage.js';
 import { useSendImage } from './useSendImage.js';
+import { useSendVoice } from './useSendVoice.js';
+import { useVoiceRecorder, isVoiceSupported, extensionForMime, micErrorMessage } from '../../hooks/useVoiceRecorder.js';
 import { useEditMessage, useDeleteMessage, useDeleteForMe } from './useMessageActions.js';
 import { useToggleReaction } from './useReactions.js';
 import { useEnsureMessageLoaded } from './useMessageSearch.js';
@@ -20,6 +22,8 @@ import { DateDivider, isSameCalendarDay } from './DateDivider.jsx';
 import { TypingIndicator } from './TypingIndicator.jsx';
 import { ChatSearchBar } from './ChatSearchBar.jsx';
 import { GifPicker } from './GifPicker.jsx';
+import { MentionPicker } from './MentionPicker.jsx';
+import { findActiveMention, extractMentions } from '../../utils/mentions.js';
 import { EmojiPicker } from './EmojiPicker.jsx';
 import { SelectionBar } from './SelectionBar.jsx';
 import { DeleteMessagesDialog } from './DeleteMessagesDialog.jsx';
@@ -93,6 +97,39 @@ export function ConversationView() {
     );
   }, [members]);
 
+  // Group members as mention targets (everyone with a username except
+  // ourselves for the picker; all of them for highlighting).
+  const allMentionable = useMemo(
+    () =>
+      (members || [])
+        .filter((m) => m.userId && !m.userId.deletedAt)
+        .map((m) => ({
+          id: m.userId._id,
+          username: m.userId.username,
+          displayName: m.userId.displayName,
+          avatarUrl: m.userId.avatarUrl,
+        }))
+        .filter((m) => m.username),
+    [members]
+  );
+  const mentionUsernames = useMemo(
+    () => new Map(allMentionable.map((m) => [m.username.toLowerCase(), m.id])),
+    [allMentionable]
+  );
+  const sendVoiceMutation = useSendVoice(chatId);
+  const recorder = useVoiceRecorder({ onLimit: (result) => sendRecording(result) });
+  const recording = recorder.status === 'recording';
+  const [mentionState, setMentionState] = useState(null); // { start, query } while typing @…
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionCandidates = useMemo(() => {
+    if (!isGroup || !mentionState) return [];
+    const q = mentionState.query.toLowerCase();
+    return allMentionable
+      .filter((m) => m.id !== currentUserId)
+      .filter((m) => !q || m.username.toLowerCase().startsWith(q) || m.displayName.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [isGroup, mentionState, allMentionable, currentUserId]);
+
   // Block status — only relevant for direct chats. Disables sending
   // and shows a banner, rather than letting the send silently fail
   // server-side with no explanation.
@@ -154,6 +191,8 @@ export function ConversationView() {
   // (or a staged photo!) typed in one chat would be sent to the next.
   useEffect(() => {
     setDraft('');
+    recorder.cancel();
+    setMentionState(null);
     setReplyingTo(null);
     setPendingImage(null);
     setTray(null);
@@ -195,7 +234,7 @@ export function ConversationView() {
       selectedMessages
         .filter(
           (m) =>
-            ['text', 'gif', 'image'].includes(m.type) &&
+            ['text', 'gif', 'image', 'voice'].includes(m.type) &&
             m.status !== 'deleted' &&
             m.status !== 'sending' &&
             m.status !== 'failed' &&
@@ -298,6 +337,21 @@ export function ConversationView() {
     return () => clearTimeout(t);
   }, [jumpTarget]);
 
+  // Arriving from global search: jump to (and highlight) the picked message
+  // once this chat's messages have loaded. Fires once per navigation.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const focusMessageId = location.state?.focusMessageId;
+  const focusHandledRef = useRef(null);
+  useEffect(() => {
+    if (!focusMessageId || !data?.messages) return;
+    const key = `${chatId}:${focusMessageId}:${location.state?.at}`;
+    if (focusHandledRef.current === key) return;
+    focusHandledRef.current = key;
+    handleSelectSearchResult({ id: focusMessageId });
+    navigate(location.pathname, { replace: true, state: null }); // don't re-jump on refresh
+  }, [focusMessageId, data?.messages, chatId]);
+
   async function handleSelectSearchResult(message) {
     const loaded = await ensureMessageLoaded(message.id);
     if (!loaded) {
@@ -383,7 +437,9 @@ export function ConversationView() {
       text,
       clientMessageId: crypto.randomUUID(),
       replyToMessageId: replyingTo?.id,
+      mentions: isGroup ? extractMentions(text, allMentionable) : undefined,
     });
+    setMentionState(null);
     setDraft('');
     setReplyingTo(null);
     notifyStoppedTyping();
@@ -428,7 +484,11 @@ export function ConversationView() {
 
   async function handleSaveEdit(messageId, text) {
     try {
-      await editMutation.mutateAsync({ messageId, text });
+      await editMutation.mutateAsync({
+        messageId,
+        text,
+        mentions: isGroup ? extractMentions(text, allMentionable) : undefined,
+      });
       setEditingId(null);
     } catch (err) {
       toast.error(err?.message || 'Could not edit message');
@@ -532,7 +592,78 @@ export function ConversationView() {
     setTray(null);
   }
 
+  async function startRecording() {
+    if (isBlocked || !isVoiceSupported) return;
+    setTray(null);
+    try {
+      await recorder.start();
+    } catch (err) {
+      toast.error(micErrorMessage(err));
+    }
+  }
+
+  function sendRecording(result) {
+    if (!result) return;
+    if (result.duration < 1) {
+      toast.info('Voice note too short');
+      return;
+    }
+    if (replyingTo) toast.info("Voice notes can't be sent as replies yet — sent without the reply");
+    sendVoiceMutation.mutate({
+      blob: result.blob,
+      duration: result.duration,
+      mimeType: result.mimeType,
+      filename: `voice.${extensionForMime(result.mimeType)}`,
+      tempId: crypto.randomUUID(),
+      localUrl: URL.createObjectURL(result.blob),
+    });
+    setReplyingTo(null);
+  }
+
+  async function finishRecording() {
+    sendRecording(await recorder.stop());
+  }
+
+  function refreshMention(el) {
+    if (!isGroup) return;
+    const next = findActiveMention(el.value, el.selectionStart ?? el.value.length);
+    setMentionState((prev) => (prev?.start === next?.start && prev?.query === next?.query ? prev : next));
+    setMentionIndex(0);
+  }
+
+  function pickMention(candidate) {
+    const el = textareaRef.current;
+    if (!el || !mentionState) return;
+    const caret = el.selectionStart ?? draft.length;
+    const insert = `@${candidate.username} `;
+    setDraft(draft.slice(0, mentionState.start) + insert + draft.slice(caret));
+    setMentionState(null);
+    requestAnimationFrame(() => {
+      const pos = mentionState.start + insert.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
   function handleKeyDown(e) {
+    if (mentionCandidates.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = mentionCandidates.length;
+        setMentionIndex((i) => (e.key === 'ArrowDown' ? (i + 1) % n : (i - 1 + n) % n));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        pickMention(mentionCandidates[mentionIndex] || mentionCandidates[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionState(null);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -541,6 +672,7 @@ export function ConversationView() {
 
   function handleChange(e) {
     setDraft(e.target.value);
+    refreshMention(e.target);
     if (e.target.value) notifyTyping();
   }
 
@@ -679,6 +811,7 @@ export function ConversationView() {
                 onSaveEdit={handleSaveEdit}
                 onCancelEdit={() => setEditingId(null)}
                 onMediaLoad={handleMediaLoad}
+                mentionUsernames={isGroup ? mentionUsernames : null}
               />
             </div>
           );
@@ -742,6 +875,32 @@ export function ConversationView() {
         className="relative flex items-end gap-1 px-2 md:px-3 pt-2 border-t border-border bg-surface-primary"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
+        {recording ? (
+          <div className="flex-1 flex items-center gap-2 h-10 animate-fade-in" role="status" aria-live="polite">
+            <button
+              type="button"
+              onClick={recorder.cancel}
+              aria-label="Discard recording"
+              className="w-10 h-10 rounded-pill text-status-error hover:bg-surfaceHover flex items-center justify-center"
+            >
+              <Trash2 size={19} />
+            </button>
+            <span className="w-2.5 h-2.5 rounded-pill bg-status-error animate-pulse-dot" />
+            <span className="text-sm font-medium text-text-primary tabular-nums">
+              {Math.floor(recorder.elapsed / 60)}:{String(Math.floor(recorder.elapsed % 60)).padStart(2, '0')}
+            </span>
+            <span className="flex-1 text-xs text-text-muted truncate">Recording…</span>
+            <button
+              type="button"
+              onClick={finishRecording}
+              aria-label="Send voice note"
+              className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90"
+            >
+              <Send size={17} />
+            </button>
+          </div>
+        ) : (
+          <>
         {tray === 'plus' && (
           <PlusMenu
             onClose={closeTray}
@@ -750,6 +909,9 @@ export function ConversationView() {
           />
         )}
         {tray === 'emoji' && <EmojiPicker onPick={insertEmoji} onClose={closeTray} />}
+        {mentionCandidates.length > 0 && (
+          <MentionPicker candidates={mentionCandidates} activeIndex={mentionIndex} onPick={pickMention} />
+        )}
         {tray === 'gif' && (
           <GifPicker onSelect={handleSendGif} onClose={closeTray} isIncognito={isIncognito} />
         )}
@@ -794,6 +956,7 @@ export function ConversationView() {
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onClick={(e) => refreshMention(e.target)}
             onPaste={handlePaste}
             onBlur={notifyStoppedTyping}
             placeholder={
@@ -808,14 +971,28 @@ export function ConversationView() {
             className="block w-full m-0 p-0 border-0 bg-transparent text-sm leading-6 text-text-primary placeholder:text-text-muted resize-none overflow-y-auto outline-none focus:outline-none focus:ring-0 disabled:opacity-50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           />
         </div>
-        <button
-          type="submit"
-          disabled={(!draft.trim() && !pendingImage) || compressing || isBlocked}
-          aria-label="Send message"
-          className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
-        >
-          <Send size={17} />
-        </button>
+        {isVoiceSupported && !draft.trim() && !pendingImage ? (
+          <button
+            type="button"
+            onClick={startRecording}
+            disabled={isBlocked}
+            aria-label="Record voice note"
+            className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Mic size={18} />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={(!draft.trim() && !pendingImage) || compressing || isBlocked}
+            aria-label="Send message"
+            className="flex-shrink-0 w-10 h-10 rounded-pill bg-gradient-brand text-white flex items-center justify-center transition-all duration-fast hover:brightness-110 active:scale-90 disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
+          >
+            <Send size={17} />
+          </button>
+        )}
+          </>
+        )}
       </form>
 
       <ForwardDialog

@@ -263,6 +263,7 @@ export function useSocketEvents() {
     socket.on('friend:request_accepted', invalidateFriendsAndNotifications);
     socket.on('group:member_added', invalidateChatsAndNotifications);
     socket.on('group:role_changed', invalidateChatsAndNotifications);
+    socket.on('group:mentioned', invalidateChatsAndNotifications);
     socket.on('incognito:started', handleIncognitoStarted);
     socket.on('incognito:grace_period_started', handleIncognitoGracePeriodStarted);
     socket.on('incognito:grace_period_cancelled', handleIncognitoGracePeriodCancelled);
@@ -300,6 +301,7 @@ export function useSocketEvents() {
       socket.off('friend:request_accepted', invalidateFriendsAndNotifications);
       socket.off('group:member_added', invalidateChatsAndNotifications);
       socket.off('group:role_changed', invalidateChatsAndNotifications);
+      socket.off('group:mentioned', invalidateChatsAndNotifications);
       socket.off('incognito:started', handleIncognitoStarted);
       socket.off('incognito:grace_period_started', handleIncognitoGracePeriodStarted);
       socket.off('incognito:grace_period_cancelled', handleIncognitoGracePeriodCancelled);

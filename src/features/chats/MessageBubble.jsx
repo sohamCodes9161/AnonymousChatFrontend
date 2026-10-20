@@ -4,6 +4,8 @@ import { useAuthStore } from '../../stores/authStore.js';
 import { useLongPress } from '../../hooks/useLongPress.js';
 import { useSwipeToReply } from '../../hooks/useSwipeToReply.js';
 import { ImageLightbox } from '../../components/ImageLightbox.jsx';
+import { splitMentions } from '../../utils/mentions.js';
+import { VoicePlayer } from './VoicePlayer.jsx';
 
 const PARTICIPANT_COLOR_CLASSES = [
   'text-participant-1',
@@ -46,6 +48,28 @@ function formatTime(dateStr) {
 // Time + edited flag + delivery state, rendered INSIDE the bubble. Colors
 // are inherited from the bubble (or the dark overlay pill on media), so
 // it reads as low-contrast text rather than a separate line.
+// Renders @username tokens that belong to real group members as highlighted
+// chips (stronger for a mention of the viewer).
+function MentionText({ text, mentionUsernames, currentUserId }) {
+  if (!mentionUsernames?.size) return text;
+  return splitMentions(text, new Set(mentionUsernames.keys())).map((p, i) =>
+    p.mention ? (
+      <span
+        key={i}
+        className={`font-semibold ${
+          mentionUsernames.get(p.mention) === currentUserId
+            ? 'rounded px-0.5 bg-black/20'
+            : 'underline decoration-dotted underline-offset-2'
+        }`}
+      >
+        {p.text}
+      </span>
+    ) : (
+      p.text
+    )
+  );
+}
+
 function MessageMeta({ message, isMine, readStatus, isDeleted }) {
   const isSending = message.status === 'sending';
   const isFailed = message.status === 'failed';
@@ -111,6 +135,7 @@ export function MessageBubble({
   isEditing = false,
   onSaveEdit,
   onCancelEdit,
+  mentionUsernames = null,
 }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [editDraft, setEditDraft] = useState('');
@@ -182,6 +207,7 @@ export function MessageBubble({
   const isIncognito = Boolean(message.incognitoSessionId);
   const isImage = message.type === 'image';
   const isGif = message.type === 'gif';
+  const isVoice = message.type === 'voice';
   // Photos and GIFs fill the bubble edge-to-edge instead of sitting in text padding.
   const isMedia = isImage || isGif;
 
@@ -344,6 +370,16 @@ export function MessageBubble({
                   />
                   {overlayMeta && overlayPill}
                 </div>
+              ) : isVoice && !isDeleted ? (
+                <div className="px-3 pt-2.5 pb-1.5">
+                  <VoicePlayer
+                    src={message.content?.audioUrl}
+                    duration={message.content?.duration}
+                    mimeType={message.content?.mimeType}
+                    disabled={isSending}
+                  />
+                  <div className="flex justify-end mt-0.5">{meta}</div>
+                </div>
               ) : isImage ? (
                 <>
                   <div
@@ -370,7 +406,9 @@ export function MessageBubble({
                 </>
               ) : (
                 <TextWithMeta meta={meta}>
-                  <span className="whitespace-pre-wrap break-words">{message.content?.text}</span>
+                  <span className="whitespace-pre-wrap break-words">
+                    <MentionText text={message.content?.text} mentionUsernames={mentionUsernames} currentUserId={currentUserId} />
+                  </span>
                 </TextWithMeta>
               )}
 

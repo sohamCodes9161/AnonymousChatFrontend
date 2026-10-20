@@ -7,8 +7,8 @@ export function useSendMessage(chatId) {
   const user = useAuthStore((s) => s.user);
 
   return useMutation({
-    mutationFn: ({ text, type, content, clientMessageId, replyToMessageId }) =>
-      sendMessage(chatId, { text, type, content, clientMessageId, replyToMessageId }),
+    mutationFn: ({ text, type, content, clientMessageId, replyToMessageId, mentions }) =>
+      sendMessage(chatId, { text, type, content, clientMessageId, replyToMessageId, mentions }),
 
     onMutate: async ({ text, type = 'text', content, clientMessageId, replyToMessageId }) => {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] });

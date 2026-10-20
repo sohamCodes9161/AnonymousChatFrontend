@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Bell } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUnreadCount, useNotifications } from './useNotifications.js';
 import { markAllNotificationsRead } from '../../api/notifications.js';
@@ -12,6 +13,8 @@ function describeNotification(n) {
       return 'Your friend request was accepted';
     case 'group_member_added':
       return 'You were added to a group';
+    case 'group_mention':
+      return 'You were mentioned in a group';
     case 'group_role_changed':
       return `Your role changed to ${n.payload.role}`;
     default:
@@ -24,6 +27,13 @@ export function NotificationBell() {
   const { data: count } = useUnreadCount();
   const { data: notifications } = useNotifications();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  function handleOpen(n) {
+    if (n.type !== 'group_mention') return;
+    navigate(`/chats/${n.payload.chatId}`, { state: { focusMessageId: n.payload.messageId, at: Date.now() } });
+    setOpen(false);
+  }
 
   async function handleMarkAllRead() {
     await markAllNotificationsRead();
@@ -56,9 +66,10 @@ export function NotificationBell() {
             notifications.map((n) => (
               <div
                 key={n.id}
+                onClick={() => handleOpen(n)}
                 className={`px-3 py-2 text-sm border-b border-border last:border-0 ${
                   n.readAt ? 'text-text-muted' : 'text-text-primary'
-                }`}
+                } ${n.type === 'group_mention' ? 'cursor-pointer hover:bg-surface-secondary' : ''}`}
               >
                 {describeNotification(n)}
               </div>

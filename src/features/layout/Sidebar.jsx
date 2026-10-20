@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { UserPlus, Settings } from 'lucide-react';
+import { UserPlus, Settings, Search, X } from 'lucide-react';
+import { GlobalSearch } from '../chats/GlobalSearch.jsx';
 import { ChatList } from '../chats/ChatList.jsx';
 import { FriendsPanel } from '../friends/FriendsPanel.jsx';
 import { NotificationBell } from '../notifications/NotificationBell.jsx';
@@ -10,6 +11,7 @@ import { useAuth } from '../auth/useAuth.js';
 export function Sidebar() {
   const [tab, setTab] = useState('chats');
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [settingsSection, setSettingsSection] = useState(null); // null = closed
   const { user, logout } = useAuth();
   const initial = (user?.displayName || '?').charAt(0).toUpperCase();
@@ -74,7 +76,40 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">{tab === 'chats' ? <ChatList /> : <FriendsPanel />}</div>
+      {tab === 'chats' && (
+        <div className="px-3 py-2 border-b border-border">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setSearch('')}
+              placeholder="Search chats and messages"
+              aria-label="Search chats and messages"
+              className="w-full pl-8 pr-8 py-1.5 rounded-pill text-sm bg-surface-secondary text-text-primary placeholder:text-text-muted border border-transparent focus-visible:outline-none focus-visible:border-accent-primary"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto">
+        {tab !== 'chats' ? (
+          <FriendsPanel />
+        ) : search.trim() ? (
+          <GlobalSearch query={search} onNavigate={() => setSearch('')} />
+        ) : (
+          <ChatList />
+        )}
+      </div>
 
       <CreateGroupModal isOpen={createGroupOpen} onClose={() => setCreateGroupOpen(false)} />
       <SettingsPanel
