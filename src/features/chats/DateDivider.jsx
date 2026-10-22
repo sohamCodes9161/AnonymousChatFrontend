@@ -19,7 +19,7 @@ function formatDateDivider(dateStr) {
 export function DateDivider({ dateStr }) {
   return (
     <div className="flex justify-center">
-      <span className="mx-auto my-4 text-xs font-medium text-text-secondary bg-neutral-500/15 px-3 py-1 rounded-full">
+      <span className="glass-pill mx-auto my-4 text-xs font-medium text-text-secondary px-3.5 py-1 rounded-full">
         {formatDateDivider(dateStr)}
       </span>
     </div>

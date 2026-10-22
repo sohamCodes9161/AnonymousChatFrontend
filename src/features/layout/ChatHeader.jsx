@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft, Search } from 'lucide-react';
+import { Info, Ghost, MoreVertical, Ban, BellOff, Bell, Archive, ArchiveRestore, Pin, PinOff, Eraser, ArrowLeft, Search, Palette } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChats } from '../chats/useChats.js';
 import { confirm } from '../../stores/confirmStore.js';
 import { ContactInfoPanel } from './ContactInfoPanel.jsx';
+import { ChatThemeDialog } from '../chats/ChatThemeDialog.jsx';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { useConnectionStore } from '../../stores/connectionStore.js';
 import { GroupInfoPanel } from '../groups/GroupInfoPanel.jsx';
@@ -51,6 +52,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
   const { data: chats } = useChats(); // already cached from the sidebar — no extra fetch
   const [infoOpen, setInfoOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = chats?.find((c) => c._id === chatId);
 
@@ -170,7 +172,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
 
   return (
     <>
-      <div className="min-h-[52px] py-1.5 flex items-center justify-between gap-2 px-2 md:px-4 border-b border-border flex-shrink-0 relative bg-surface-elevated/60 backdrop-blur-sm">
+      <div className="glass-bar min-h-[60px] py-2 flex items-center justify-between gap-2 px-2 md:px-4 border-b border-border flex-shrink-0 relative z-10 shadow-elevation-1">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => navigate('/chats')}
@@ -186,7 +188,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
             aria-label={chat.type === 'direct' ? 'Contact info' : 'Group info'}
           >
           <div className="relative flex-shrink-0">
-            <div className="w-9 h-9 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center text-xs font-semibold overflow-hidden ring-2 ring-surface-primary">
+            <div className="w-10 h-10 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center text-sm font-semibold overflow-hidden">
               {avatarUrl ? (
                 <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -194,12 +196,12 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
               )}
             </div>
             {chat.type === 'direct' && socketConnected && isOnline && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-pill bg-status-success border-2 border-surface-elevated" />
             )}
           </div>
           {/* Vertical stack: name on top, presence directly beneath. */}
           <div className="flex flex-col min-w-0 leading-tight">
-            <span className="text-sm font-semibold text-text-primary truncate">{title}</span>
+            <span className="text-[15px] font-semibold text-text-primary truncate">{title}</span>
             <span
               className={`text-xs truncate ${
                 chat.type === 'direct' && socketConnected && isOnline ? 'text-status-success' : 'text-text-muted'
@@ -253,7 +255,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
         </div>
 
         {menuOpen && (
-          <div className="absolute right-2 md:right-4 top-full mt-1 w-56 bg-surface-elevated border border-border rounded-lg shadow-elevation-2 z-10 py-1">
+          <div className="absolute right-2 md:right-4 top-full mt-1 w-56 bg-surface-elevated border border-border rounded-xl shadow-elevation-3 z-20 py-1 animate-slide-up-in">
             {isPinned ? (
               <button onClick={handleUnpin} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
                 <PinOff size={14} /> Unpin
@@ -287,6 +289,15 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
                 <Archive size={14} /> Archive
               </button>
             )}
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                setThemeOpen(true);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary"
+            >
+              <Palette size={14} /> Chat theme
+            </button>
             <button onClick={handleClear} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-surface-secondary">
               <Eraser size={14} /> Clear chat
             </button>
@@ -307,6 +318,7 @@ export function ChatHeader({ searchOpen = false, onToggleSearch }) {
           </div>
         )}
       </div>
+      <ChatThemeDialog chatId={chatId} isOpen={themeOpen} onClose={() => setThemeOpen(false)} />
       {chat.type === 'direct' && (
         <ContactInfoPanel chat={chat} isOpen={contactOpen} onClose={() => setContactOpen(false)} />
       )}

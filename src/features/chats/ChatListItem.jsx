@@ -2,6 +2,7 @@ import { NavLink, useParams } from 'react-router-dom';
 import { BellOff, Pin } from 'lucide-react';
 import { usePresenceStore } from '../../stores/presenceStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
+import { useTypingStore } from '../../stores/typingStore.js';
 
 function formatRelativeTime(dateStr) {
   if (!dateStr) return '';
@@ -23,11 +24,14 @@ export function ChatListItem({ chat }) {
   const isOnline = usePresenceStore((s) =>
     chat.otherParticipant ? s.onlineUserIds.has(chat.otherParticipant.id) : false
   );
+  const someoneTyping = useTypingStore((s) => (s.typingByChatId.get(chat._id)?.size ?? 0) > 0);
 
   const title = chat.type === 'direct' ? chat.otherParticipant?.displayName || 'Unknown' : chat.name;
   const avatarUrl = chat.type === 'direct' ? chat.otherParticipant?.avatarUrl : chat.avatarUrl;
   const initial = (title || '?').charAt(0).toUpperCase();
   const isMuted = chat.membership?.mutedUntil && new Date(chat.membership.mutedUntil) > new Date();
+  const unread = isActive ? 0 : chat.unreadCount || 0;
+  const hasUnread = unread > 0;
 
   const previewText =
     chat.type === 'group' && chat.lastMessagePreview
@@ -39,36 +43,49 @@ export function ChatListItem({ chat }) {
   return (
     <NavLink
       to={`/chats/${chat._id}`}
-      className={`relative flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-fast ${
-        isActive ? 'bg-surface-secondary shadow-elevation-1' : 'hover:bg-surfaceHover hover:translate-x-0.5'
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors duration-fast ${
+        isActive ? 'bg-accentSubtle' : 'hover:bg-surfaceHover'
       }`}
     >
-      {isActive && (
-        <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-pill bg-gradient-brand" />
-      )}
       <div className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center font-semibold text-sm overflow-hidden">
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-          ) : (
-            initial
-          )}
+        <div className="w-12 h-12 rounded-pill bg-gradient-to-br from-accent-primary to-accent-secondary text-white flex items-center justify-center font-semibold text-base overflow-hidden">
+          {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : initial}
         </div>
         {chat.type === 'direct' && isOnline && (
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-pill bg-status-success border-2 border-surface-primary animate-pulse-dot" />
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-pill bg-status-success border-2 border-surface-primary" />
         )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium text-text-primary truncate">{title}</span>
-          {chat.membership?.pinnedAt && <Pin size={11} className="text-accent-primary flex-shrink-0" />}
+          <span className={`text-[15px] truncate text-text-primary ${hasUnread ? 'font-semibold' : 'font-medium'}`}>
+            {title}
+          </span>
+          {chat.membership?.pinnedAt && <Pin size={11} className="text-text-muted flex-shrink-0" />}
           {isMuted && <BellOff size={12} className="text-text-muted flex-shrink-0" />}
         </div>
-        <div className="text-xs text-text-muted truncate">{previewText}</div>
+        <div
+          className={`text-[13px] truncate ${
+            someoneTyping ? 'text-accent-primary font-medium' : hasUnread ? 'text-text-primary' : 'text-text-muted'
+          }`}
+        >
+          {someoneTyping ? 'typing…' : previewText}
+        </div>
       </div>
-      <span className="text-xs text-text-muted flex-shrink-0">
-        {formatRelativeTime(chat.lastActivity)}
-      </span>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0 self-start pt-0.5">
+        <span className={`text-[11px] ${hasUnread && !isMuted ? 'text-accent-primary font-semibold' : 'text-text-muted'}`}>
+          {formatRelativeTime(chat.lastActivity)}
+        </span>
+        {hasUnread && (
+          <span
+            className={`min-w-[20px] h-5 px-1.5 rounded-pill text-[11px] font-semibold flex items-center justify-center ${
+              isMuted ? 'bg-surface-secondary text-text-secondary' : 'bg-accent-primary text-white'
+            }`}
+            aria-label={`${unread} unread`}
+          >
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </div>
     </NavLink>
   );
 }

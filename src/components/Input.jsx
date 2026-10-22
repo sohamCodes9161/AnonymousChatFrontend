@@ -9,7 +9,7 @@ export function Input({ label, error, className = '', id, ...props }) {
       <input
         id={id}
         className={`
-          px-3 py-2 rounded-md text-sm
+          px-3.5 py-2.5 rounded-xl text-sm
           bg-surface-elevated text-text-primary
           border ${error ? 'border-status-error' : 'border-border'}
           placeholder:text-text-muted

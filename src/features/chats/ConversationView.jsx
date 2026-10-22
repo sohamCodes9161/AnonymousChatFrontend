@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, Send, Plus, Smile, ImagePlus, Mic, Trash2 } from 'lucide-react';
 import { useMessages } from './useMessages.js';
 import { useSendMessage } from './useSendMessage.js';
@@ -33,6 +34,9 @@ import { usePageActive } from '../../hooks/usePageActive.js';
 import { copyToClipboard } from '../../utils/clipboard.js';
 import { isGiphyConfigured } from '../../api/giphy.js';
 import { useIncognitoStatus } from '../incognito/useIncognito.js';
+import { useTypingStore } from '../../stores/typingStore.js';
+import { useChatThemeStore } from '../../stores/chatThemeStore.js';
+import { resolveTheme } from '../../theme/chatThemes.js';
 import { ChatHeader } from '../layout/ChatHeader.jsx';
 import { IncognitoBanner } from '../incognito/IncognitoBanner.jsx';
 import { markRead } from '../../api/chats.js';
@@ -116,6 +120,17 @@ export function ConversationView() {
     () => new Map(allMentionable.map((m) => [m.username.toLowerCase(), m.id])),
     [allMentionable]
   );
+  const queryClient = useQueryClient();
+  const themeGlobal = useChatThemeStore((s) => s.global);
+  const themeOverride = useChatThemeStore((s) => s.byChat[chatId]);
+  const theme = useMemo(() => resolveTheme({ ...themeGlobal, ...themeOverride }), [themeGlobal, themeOverride]);
+  const typingCount = useTypingStore((s) => s.typingByChatId.get(chatId)?.size ?? 0);
+  useEffect(() => {
+    // A typing bubble appearing/disappearing shifts the end of the list —
+    // keep following the bottom if we were already there.
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) el.scrollTo({ top: el.scrollHeight });
+  }, [typingCount]);
   const sendVoiceMutation = useSendVoice(chatId);
   const recorder = useVoiceRecorder({ onLimit: (result) => sendRecording(result) });
   const recording = recorder.status === 'recording';
@@ -310,6 +325,10 @@ export function ConversationView() {
     const marked = lastMarkedRef.current;
     if (marked.chatId === chatId && marked.messageId === lastReal.id) return;
     lastMarkedRef.current = { chatId, messageId: lastReal.id };
+    // Clear the sidebar badge right away; the server confirms on the next refetch.
+    queryClient.setQueryData(['chats'], (old) =>
+      old ? old.map((c) => (c._id === chatId && c.unreadCount ? { ...c, unreadCount: 0 } : c)) : old
+    );
     markRead(chatId, lastReal.id).catch(() => {
       // Allow a retry on the next update; not worth an error toast.
       lastMarkedRef.current = { chatId: null, messageId: null };
@@ -743,7 +762,8 @@ export function ConversationView() {
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-3">
+      <div className="relative flex-1 min-h-0 flex flex-col chat-canvas" style={{ ...theme.wallpaperStyle, ...theme.bubbleVars }}>
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-3 slim-scroll">
         {data?.messages?.map((message, idx) => {
           const prevMessage = data.messages[idx - 1];
           const showSenderHeader =
@@ -765,6 +785,14 @@ export function ConversationView() {
             message.type !== 'system' &&
             nextMessage.senderId === message.senderId &&
             isSameCalendarDay(message.createdAt, nextMessage.createdAt);
+
+          const prevForGroup = data.messages[idx - 1];
+          const groupedWithPrev =
+            Boolean(prevForGroup) &&
+            prevForGroup.type !== 'system' &&
+            message.type !== 'system' &&
+            prevForGroup.senderId === message.senderId &&
+            isSameCalendarDay(prevForGroup.createdAt, message.createdAt);
 
           const repliedMessage = message.replyToMessageId
             ? messagesById.get(message.replyToMessageId)
@@ -802,6 +830,7 @@ export function ConversationView() {
                 readStatus={readStatus}
                 highlighted={highlightedId === message.id}
                 groupedWithNext={groupedWithNext}
+                groupedWithPrev={groupedWithPrev}
                 selectionMode={selectionMode}
                 selected={selectedMessageIds.includes(message.id)}
                 onLongPress={startSelection}
@@ -816,12 +845,16 @@ export function ConversationView() {
             </div>
           );
         })}
+        <TypingIndicator
+          chatId={chatId}
+          isGroup={isGroup}
+          resolveName={(id) => (id === currentUserId ? null : resolveSenderName(id))}
+          resolveAvatar={(id) => (isGroup ? memberProfileById.get(id)?.avatarUrl : null)}
+        />
       </div>
 
-      <TypingIndicator chatId={chatId} />
-
       {replyingTo && (
-        <div className="flex items-center justify-between px-4 py-2 bg-surface-secondary border-t border-border">
+        <div className="mx-2 md:mx-3 mb-1 flex items-center justify-between px-3 py-2 rounded-xl glass-bar border-l-4 border-accent-primary shadow-elevation-1">
           <div className="text-xs min-w-0">
             <div className="font-semibold text-accent-primary">
               Replying to {resolveSenderName(replyingTo.senderId)}
@@ -872,7 +905,7 @@ export function ConversationView() {
 
       <form
         onSubmit={handleSubmit}
-        className="relative flex items-end gap-1 px-2 md:px-3 pt-2 border-t border-border bg-surface-primary"
+        className="relative flex items-end gap-1.5 px-2 md:px-3 pt-1"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
         {recording ? (
@@ -929,7 +962,7 @@ export function ConversationView() {
           disabled={isBlocked}
           aria-label="Attach"
           aria-expanded={tray === 'plus'}
-          className="flex-shrink-0 w-10 h-10 rounded-pill text-text-secondary hover:text-accent-primary hover:bg-surfaceHover flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
+          className="glass-pill flex-shrink-0 w-10 h-10 rounded-pill text-text-secondary hover:text-accent-primary flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus size={22} className={`transition-transform duration-fast ${tray === 'plus' ? 'rotate-45' : ''}`} />
         </button>
@@ -940,7 +973,7 @@ export function ConversationView() {
           disabled={isBlocked}
           aria-label="Emoji"
           aria-expanded={tray === 'emoji'}
-          className={`flex-shrink-0 w-10 h-10 rounded-pill hover:bg-surfaceHover flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={`glass-pill flex-shrink-0 w-10 h-10 rounded-pill flex items-center justify-center transition-colors duration-fast disabled:opacity-40 disabled:cursor-not-allowed ${
             tray === 'emoji' ? 'text-accent-primary' : 'text-text-secondary hover:text-accent-primary'
           }`}
         >
@@ -950,7 +983,7 @@ export function ConversationView() {
             border or padding of its own and its scrollbar is hidden, so
             nothing can ever cut across the field's rounded edge. Height
             follows the text (see the auto-grow effect) up to a cap. */}
-        <div className="flex-1 min-w-0 flex items-end bg-surface-secondary rounded-[1.5rem] px-4 py-2 border border-transparent focus-within:border-accent-primary transition-colors duration-fast">
+        <div className="flex-1 min-w-0 flex items-end bg-surface-elevated shadow-elevation-1 rounded-[1.5rem] px-4 py-2 border border-transparent focus-within:border-accent-primary transition-colors duration-fast">
           <textarea
             ref={textareaRef}
             value={draft}
@@ -994,6 +1027,8 @@ export function ConversationView() {
           </>
         )}
       </form>
+
+      </div>
 
       <ForwardDialog
         isOpen={forwardOpen}

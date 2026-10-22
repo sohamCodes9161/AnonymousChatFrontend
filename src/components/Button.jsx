@@ -9,7 +9,7 @@ export function Button({ variant = 'primary', className = '', disabled, children
   return (
     <button
       className={`
-        px-4 py-2 rounded-md font-medium text-sm
+        px-4 py-2 rounded-xl font-medium text-sm
         transition-all duration-fast
         disabled:opacity-50 disabled:cursor-not-allowed
         hover:shadow-elevation-1 active:scale-[0.97]

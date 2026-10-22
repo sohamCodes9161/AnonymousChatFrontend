@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, CheckCheck, Clock, CornerUpLeft, Forward } from 'lucide-react';
+import { Check, X, CheckCheck, Clock, CornerUpLeft, Forward, Ban } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useLongPress } from '../../hooks/useLongPress.js';
 import { useSwipeToReply } from '../../hooks/useSwipeToReply.js';
@@ -38,7 +38,11 @@ const SYSTEM_MESSAGE_TEXT = {
 function SystemMessageLine({ message }) {
   const entry = SYSTEM_MESSAGE_TEXT[message.content.event];
   const text = typeof entry === 'function' ? entry(message.content) : entry || message.content.event;
-  return <div className="text-center text-xs text-text-muted py-1">{text}</div>;
+  return (
+    <div className="flex justify-center px-6 py-1.5">
+      <span className="glass-pill max-w-full text-center text-xs text-text-secondary px-3 py-1 rounded-full">{text}</span>
+    </div>
+  );
 }
 
 function formatTime(dateStr) {
@@ -74,7 +78,7 @@ function MessageMeta({ message, isMine, readStatus, isDeleted }) {
   const isSending = message.status === 'sending';
   const isFailed = message.status === 'failed';
   return (
-    <span className="inline-flex items-center gap-1 text-xs leading-none whitespace-nowrap select-none">
+    <span className="inline-flex items-center gap-1 text-[11px] leading-none whitespace-nowrap select-none">
       {message.status === 'edited' && !isDeleted && <span className="opacity-70">edited</span>}
       {isFailed && <span className="font-semibold">Failed</span>}
       <span className="opacity-70">{formatTime(message.createdAt)}</span>
@@ -95,12 +99,12 @@ function MessageMeta({ message, isMine, readStatus, isDeleted }) {
 // pinned to the corner — the same trick WhatsApp Web uses.
 function TextWithMeta({ children, meta, className = '' }) {
   return (
-    <div className={`relative px-3 pt-1.5 pb-1.5 leading-snug ${className}`}>
+    <div className={`relative px-3.5 pt-2 pb-2 leading-[1.4] ${className}`}>
       {children}
       <span aria-hidden="true" className="invisible inline-block ml-3 align-bottom">
         {meta}
       </span>
-      <span className="absolute bottom-1.5 right-3">{meta}</span>
+      <span className="absolute bottom-2 right-3.5">{meta}</span>
     </div>
   );
 }
@@ -127,6 +131,7 @@ export function MessageBubble({
   highlighted = false,
   onMediaLoad,
   groupedWithNext = false,
+  groupedWithPrev = false,
   selectionMode = false,
   selected = false,
   onLongPress,
@@ -211,12 +216,6 @@ export function MessageBubble({
   // Photos and GIFs fill the bubble edge-to-edge instead of sitting in text padding.
   const isMedia = isImage || isGif;
 
-  const bubbleColor = isIncognito
-    ? 'bg-message-incognito text-white'
-    : isMine
-      ? 'bg-gradient-to-br from-accent-primary to-accent-secondary text-white'
-      : 'bg-message-received text-text-primary ring-1 ring-black/5';
-
   const senderColorClass = getParticipantColorClass(message.senderId);
   const initial = (senderProfile?.displayName || '?').charAt(0).toUpperCase();
   const reactions = message.reactions || [];
@@ -233,6 +232,19 @@ export function MessageBubble({
   }
 
   const caption = isImage ? message.content?.caption : null;
+
+  // A photo/GIF with no caption is the bubble: no colored frame around it
+  // (current WhatsApp/iMessage look), just rounded media with a soft shadow.
+  const bareMedia = isMedia && !isDeleted && !caption;
+  const bubbleColor = bareMedia
+    ? 'shadow-[0_1px_3px_rgba(20,18,40,0.2)]'
+    : isIncognito
+      ? 'bubble-incognito'
+      : isMine
+        ? 'bubble-sent'
+        : 'bubble-received';
+  const ownCorner = isMine ? 'rounded-br-[6px]' : 'rounded-bl-[6px]';
+  const joinCorner = groupedWithPrev ? (isMine ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]') : '';
   // Photos/GIFs without a caption carry their timestamp on a dark pill over
   // the media itself; with a caption it moves below, inside the text area.
   const overlayMeta = isMedia && !isDeleted && !caption;
@@ -265,8 +277,8 @@ export function MessageBubble({
       // Text selection is off on touch (it would fight the long-press) and
       // while selecting; desktop keeps normal text selection otherwise.
       className={`group flex touch-pan-y [overflow-x:clip] ${isMine ? 'justify-end' : 'justify-start'} px-3 md:px-4 ${
-        groupedWithNext ? 'pb-1' : 'pb-3'
-      } ${hasReactions ? 'mb-3' : ''} ${isSending ? '' : 'animate-message-in'} ${
+        groupedWithNext ? 'pb-[3px]' : 'pb-2.5'
+      } ${hasReactions ? 'mb-4' : ''} ${isSending ? '' : 'animate-message-in'} ${
         selectable ? 'select-none [-webkit-touch-callout:none]' : ''
       } ${selectable && !selectionMode ? 'md:select-text' : ''} ${
         selected ? 'bg-accentSubtle' : ''
@@ -319,9 +331,8 @@ export function MessageBubble({
         ) : (
           <div className="relative">
             <div
-              className={`relative ${isMedia && !isDeleted ? 'p-1' : ''} rounded-2xl text-sm shadow-elevation-1 transition-all duration-fast ${bubbleColor} ${
-                groupedWithNext ? '' : isMine ? 'rounded-br-md' : 'rounded-bl-md'
-              } ${isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''} ${
+              className={`relative ${isMedia && !isDeleted && caption ? 'p-1' : ''} rounded-[20px] ${ownCorner} ${joinCorner} text-[15px] transition-[transform,opacity] duration-fast ${bubbleColor} ${
+                isFailed ? 'opacity-50' : ''} ${isSending ? 'opacity-70 scale-[0.98]' : ''} ${
                 highlighted ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-surface-primary' : ''
               }`}
             >
@@ -343,14 +354,16 @@ export function MessageBubble({
 
               {isDeleted ? (
                 <TextWithMeta meta={meta}>
-                  <span className="italic opacity-70">Message deleted</span>
+                  <span className="inline-flex items-center gap-1.5 italic opacity-70">
+                    <Ban size={13} /> This message was deleted
+                  </span>
                 </TextWithMeta>
               ) : isGif ? (
                 // Space is reserved from the API's width/height so the chat
                 // doesn't jump when the GIF loads. The bubble shows the light
                 // 200px rendition; the full original opens on click.
                 <div
-                  className="relative overflow-hidden rounded-xl bg-surface-secondary shimmer max-h-80"
+                  className="relative overflow-hidden rounded-[inherit] bg-surface-secondary shimmer max-h-80"
                   style={{
                     width: Math.min(message.content?.width || 200, 288),
                     maxWidth: '100%',
@@ -383,7 +396,7 @@ export function MessageBubble({
               ) : isImage ? (
                 <>
                   <div
-                    className="relative overflow-hidden rounded-xl w-72 md:w-80 max-w-full bg-surface-secondary"
+                    className={`relative overflow-hidden ${caption ? 'rounded-2xl' : 'rounded-[inherit]'} w-72 md:w-80 max-w-full bg-surface-secondary`}
                     // Natural height isn't stored on the message, so hold a
                     // placeholder height until the photo has loaded.
                     style={mediaLoaded ? undefined : { minHeight: 160 }}
@@ -416,19 +429,23 @@ export function MessageBubble({
                   instead of adding a row to the message stream. Tapping a chip
                   is handled by the row while selecting. */}
               {hasReactions && (
-                <div className="absolute -bottom-2.5 right-3 z-[1] flex gap-1">
+                <div className={`absolute -bottom-3.5 ${isMine ? 'right-2' : 'left-2'} z-[1] flex gap-1`}>
                   {reactions.map((r) => (
                     <span
                       key={r.emoji}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border shadow-sm bg-surface-elevated ${
-                        r.reactedByMe
-                          ? 'border-accent-primary text-accent-primary'
-                          : 'border-border text-text-secondary'
+                      className={`reaction-chip inline-flex items-center gap-0.5 h-6 px-1.5 rounded-full text-[13px] bg-surface-elevated border ${
+                        r.reactedByMe ? 'border-accent-primary' : 'border-transparent'
                       }`}
+                      // The canvas-colored ring "cuts" the chip out of the bubble edge.
+                      style={{ boxShadow: '0 0 0 2px var(--canvas-base), 0 1px 3px rgba(20,18,40,0.25)' }}
                       aria-label={`${r.emoji} ${r.count}${r.reactedByMe ? ', you reacted' : ''}`}
                     >
                       <span>{r.emoji}</span>
-                      <span className="font-medium">{r.count}</span>
+                      {r.count > 1 && (
+                        <span className={`text-[11px] font-semibold ${r.reactedByMe ? 'text-accent-primary' : 'text-text-secondary'}`}>
+                          {r.count}
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>

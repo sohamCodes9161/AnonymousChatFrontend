@@ -4,8 +4,8 @@
 
 :root {
   /* Surfaces */
-  --surface-primary: #fafaf9;
-  --surface-secondary: #f0efec;
+  --surface-primary: #fbfafe;
+  --surface-secondary: #f0eef8;
   --surface-elevated: #ffffff;
   --surface-overlay: rgba(20, 18, 24, 0.5);
 
@@ -15,7 +15,7 @@
   --text-muted: #8b8797;
 
   /* Borders */
-  --border-default: #e4e2e0;
+  --border-default: #e6e3f0;
 
   /* Accent — indigo-violet, deliberately not the common terracotta/neon defaults */
   --accent-primary: #5b4fe8;
@@ -49,7 +49,13 @@
 
   /* Chat-specific */
   --message-sent: #5b4fe8;
-  --message-received: #f0efec;
+  --message-received: #ffffff;
+  /* Chat canvas (the wallpaper's base color) and the faint pattern ink. */
+  --canvas-base: #ece9f6;
+  --canvas-ink: rgba(70, 58, 150, 0.09);
+  --bubble-sent-a: #5b4fe8;
+  --bubble-sent-b: #7a6ff2;
+  --bubble-shadow: 0 1px 1.5px rgba(30, 24, 80, 0.12);
   /* Distinct violet-magenta, reserved ONLY for Incognito — gives stealth
      mode its own unmistakable visual signature rather than a label. */
   --message-incognito: #a855f7;
@@ -74,9 +80,9 @@
 }
 
 [data-theme='dark'] {
-  --surface-primary: #17151f;
-  --surface-secondary: #1f1c2b;
-  --surface-elevated: #252231;
+  --surface-primary: #13111b;
+  --surface-secondary: #1c1928;
+  --surface-elevated: #232030;
   --surface-overlay: rgba(0, 0, 0, 0.6);
 
   --text-primary: #f0eef5;
@@ -105,7 +111,12 @@
   --participant-6: #fb923c;
 
   --message-sent: #6c63ff;
-  --message-received: #252231;
+  --message-received: #25222f;
+  --canvas-base: #0d0c14;
+  --canvas-ink: rgba(170, 160, 255, 0.07);
+  --bubble-sent-a: #5a4fe0;
+  --bubble-sent-b: #7468ff;
+  --bubble-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.45);
   --message-incognito: #c084fc;
   --incognito-subtle: rgba(192, 132, 252, 0.15);
 
@@ -236,3 +247,93 @@ body {
 [data-theme='dark'] .glow-accent {
   box-shadow: 0 0 0 1px rgba(139, 127, 255, 0.18), 0 8px 24px -8px rgba(139, 127, 255, 0.45);
 }
+
+
+/* =====================================================================
+   Chat surface layer (UI overhaul)
+   Everything below is additive: the canvas wallpaper, bubble skins,
+   glass chrome, the typing bubble, reaction pop and rich toasts.
+   Per-chat themes set --bubble-sent-a/b and the wallpaper inline.
+   ===================================================================== */
+
+/* Chrome that floats over the canvas: translucent + blurred. Tailwind's
+   /opacity shorthand can't tint a custom-property color, so it's CSS. */
+.glass-bar {
+  background: color-mix(in srgb, var(--surface-elevated) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+}
+.glass-pill {
+  background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 2px rgba(30, 24, 80, 0.1);
+}
+
+.chat-canvas {
+  background-color: var(--canvas-base);
+  background-repeat: repeat;
+}
+
+/* Bubble skins. Fully rounded, no tails (current WhatsApp/iMessage look);
+   the corner next to the sender is tightened per bubble in JSX so runs of
+   messages read as one block. */
+.bubble-sent {
+  background-image: linear-gradient(140deg, var(--bubble-sent-a), var(--bubble-sent-b));
+  color: #fff;
+  box-shadow: var(--bubble-shadow);
+}
+.bubble-received {
+  background: var(--message-received);
+  color: var(--text-primary);
+  box-shadow: var(--bubble-shadow);
+}
+.bubble-incognito {
+  background-image: linear-gradient(140deg, #9333ea, var(--message-incognito));
+  color: #fff;
+  box-shadow: var(--bubble-shadow);
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes reaction-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.reaction-chip { animation: reaction-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in { animation: toast-in 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+
+@keyframes toast-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Slim scrollbars in the message list and sidebar. */
+.slim-scroll { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text-muted) 40%, transparent) transparent; }
+.slim-scroll::-webkit-scrollbar { width: 8px; }
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::selection { background: color-mix(in srgb, var(--accent-primary) 28%, transparent); }

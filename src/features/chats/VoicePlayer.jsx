@@ -82,7 +82,7 @@ export function VoicePlayer({ src, duration = 0, mimeType, disabled = false }) {
         onClick={toggle}
         disabled={disabled}
         aria-label={playing ? 'Pause voice note' : 'Play voice note'}
-        className="w-9 h-9 rounded-pill bg-white/20 flex items-center justify-center flex-shrink-0 hover:bg-white/30 active:scale-95 transition disabled:opacity-50"
+        className="w-9 h-9 rounded-pill bg-black/10 flex items-center justify-center flex-shrink-0 hover:bg-black/20 active:scale-95 transition disabled:opacity-50"
       >
         {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
       </button>

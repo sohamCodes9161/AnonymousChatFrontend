@@ -4,6 +4,53 @@ import { useAuthStore } from '../stores/authStore.js';
 import { usePresenceStore } from '../stores/presenceStore.js';
 import { useTypingStore } from '../stores/typingStore.js';
 import { useConnectionStore } from '../stores/connectionStore.js';
+import { toast } from '../stores/toastStore.js';
+import { messagePreviewText } from '../utils/messagePreview.js';
+import { showDesktopAlert } from '../utils/desktopAlerts.js';
+
+// Message ids we've already announced — message:new can arrive twice
+// (reconnect catch-up), and a banner must only ever show once.
+const announced = new Set();
+
+function announceIncomingMessage(queryClient, message) {
+  const myId = useAuthStore.getState().user?.id;
+  if (!myId || message.senderId === myId || message.type === 'system') return;
+  if (announced.has(message.id)) return;
+  announced.add(message.id);
+  if (announced.size > 200) announced.delete(announced.values().next().value);
+
+  const chat = queryClient.getQueryData(['chats'])?.find((c) => c._id === message.chatId);
+  if (!chat) return;
+
+  const mentionedMe = (message.mentions || []).includes(myId);
+  const muted = chat.membership?.mutedUntil && new Date(chat.membership.mutedUntil) > new Date();
+  if (muted && !mentionedMe) return;
+
+  const pageVisible = document.visibilityState === 'visible';
+  const viewing = pageVisible && window.location.pathname === `/chats/${message.chatId}`;
+  if (viewing) return;
+
+  const isGroup = chat.type === 'group';
+  const title = isGroup ? chat.name : chat.otherParticipant?.displayName || 'New message';
+  const avatarUrl = isGroup ? chat.avatarUrl : chat.otherParticipant?.avatarUrl;
+  let body;
+  if (message.incognitoSessionId) {
+    body = 'New incognito message'; // never put volatile content in a banner or OS notification
+  } else {
+    const text = messagePreviewText(message);
+    const sender = isGroup
+      ? queryClient.getQueryData(['groupMembers', message.chatId])?.find((m) => m.userId?._id === message.senderId)
+          ?.userId?.displayName
+      : null;
+    body = mentionedMe ? `${sender || 'Someone'} mentioned you: ${text}` : sender ? `${sender}: ${text}` : text;
+  }
+
+  if (pageVisible) {
+    toast.notify({ title, body, avatarUrl, initial: (title || '?').charAt(0).toUpperCase(), kind: 'message', chatId: message.chatId, messageId: message.incognitoSessionId ? undefined : message.id });
+  } else {
+    showDesktopAlert({ title, body, icon: avatarUrl, tag: message.chatId, path: `/chats/${message.chatId}` });
+  }
+}
 
 export function useSocketEvents() {
   const queryClient = useQueryClient();
@@ -53,6 +100,7 @@ export function useSocketEvents() {
         return { ...old, messages: [...old.messages, message] };
       });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
+      announceIncomingMessage(queryClient, message);
     }
 
     function handleMessageEdited(message) {
@@ -259,9 +307,22 @@ export function useSocketEvents() {
     socket.on('chats:refresh', handleChatsRefresh);
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
-    socket.on('friend:request_received', invalidateFriendsAndNotifications);
-    socket.on('friend:request_accepted', invalidateFriendsAndNotifications);
-    socket.on('group:member_added', invalidateChatsAndNotifications);
+    const onFriendRequest = () => {
+      invalidateFriendsAndNotifications();
+      toast.notify({ title: 'New friend request', body: 'Open Friends to respond', kind: 'friend' });
+      if (document.visibilityState !== 'visible') showDesktopAlert({ title: 'New friend request', tag: 'friend-request', path: '/chats' });
+    };
+    const onFriendAccepted = () => {
+      invalidateFriendsAndNotifications();
+      toast.notify({ title: 'Friend request accepted', body: 'You can message them now', kind: 'accepted' });
+    };
+    const onAddedToGroup = ({ chatId } = {}) => {
+      invalidateChatsAndNotifications();
+      toast.notify({ title: 'Added to a group', body: 'Tap to open it', kind: 'group', chatId });
+    };
+    socket.on('friend:request_received', onFriendRequest);
+    socket.on('friend:request_accepted', onFriendAccepted);
+    socket.on('group:member_added', onAddedToGroup);
     socket.on('group:role_changed', invalidateChatsAndNotifications);
     socket.on('group:mentioned', invalidateChatsAndNotifications);
     socket.on('incognito:started', handleIncognitoStarted);
@@ -297,9 +358,9 @@ export function useSocketEvents() {
       socket.off('chats:refresh', handleChatsRefresh);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
-      socket.off('friend:request_received', invalidateFriendsAndNotifications);
-      socket.off('friend:request_accepted', invalidateFriendsAndNotifications);
-      socket.off('group:member_added', invalidateChatsAndNotifications);
+      socket.off('friend:request_received', onFriendRequest);
+      socket.off('friend:request_accepted', onFriendAccepted);
+      socket.off('group:member_added', onAddedToGroup);
       socket.off('group:role_changed', invalidateChatsAndNotifications);
       socket.off('group:mentioned', invalidateChatsAndNotifications);
       socket.off('incognito:started', handleIncognitoStarted);

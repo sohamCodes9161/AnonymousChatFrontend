@@ -1,4 +1,6 @@
-import { Outlet, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useParams, useNavigate } from 'react-router-dom';
+import { useChats } from '../chats/useChats.js';
 import { Sidebar } from './Sidebar.jsx';
 import { useSocketEvents } from '../../sockets/useSocketEvents.js';
 import { useThemeSync } from '../settings/useThemeSync.js';
@@ -10,6 +12,31 @@ export function ChatLayout() {
   // from those, never registers its own listeners.
   useSocketEvents();
   useThemeSync();
+
+  const navigate = useNavigate();
+  const { data: chats } = useChats();
+
+  // Tab title carries the unread total, e.g. "(3) Incognito". Muted chats
+  // don't count — same rule as banners.
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\+?\)\s*/, '');
+    const now = Date.now();
+    const total = (chats || []).reduce((sum, c) => {
+      const muted = c.membership?.mutedUntil && new Date(c.membership.mutedUntil).getTime() > now;
+      return muted ? sum : sum + (c.unreadCount || 0);
+    }, 0);
+    document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${base}` : base;
+    return () => {
+      document.title = base;
+    };
+  }, [chats]);
+
+  // OS notification clicks ask the router (not a page reload) to open a chat.
+  useEffect(() => {
+    const onNavigate = (e) => e.detail?.path && navigate(e.detail.path);
+    window.addEventListener('app:navigate', onNavigate);
+    return () => window.removeEventListener('app:navigate', onNavigate);
+  }, [navigate]);
 
   // Mobile has no room for sidebar + conversation side by side, so this
   // becomes a single-view stack: no chatId selected -> show the list

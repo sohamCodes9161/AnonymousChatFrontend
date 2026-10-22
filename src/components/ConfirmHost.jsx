@@ -27,7 +27,7 @@ export function ConfirmHost() {
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
-        className="bg-surface-elevated rounded-lg shadow-elevation-3 w-full max-w-sm p-5"
+        className="bg-surface-elevated rounded-2xl shadow-elevation-3 w-full max-w-sm p-5 animate-slide-up-in"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-semibold text-text-primary">{title}</h2>
