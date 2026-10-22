@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from './useAuth.js';
 import { Button } from '../../components/Button.jsx';
 import { Input } from '../../components/Input.jsx';
-import { Card } from '../../components/Card.jsx';
+import { AuthShell } from './AuthShell.jsx';
 import { ApiError } from '../../api/client.js';
 
 export function LoginPage() {
@@ -36,12 +36,14 @@ export function LoginPage() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-surface-primary px-4">
-      <Card className="w-full max-w-sm p-6">
-        <h1 className="text-lg font-semibold text-text-primary mb-1">Welcome back</h1>
-        <p className="text-sm text-text-secondary mb-6">Log in to your account.</p>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <AuthShell
+      title="Welcome back"
+      subtitle="Log in to continue your conversations."
+      footer={
+        <>Don't have an account?{' '}<Link to="/register" className="text-accent-primary font-medium hover:underline">Register</Link></>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             id="username"
             label="Username"
@@ -61,7 +63,7 @@ export function LoginPage() {
           />
 
           {error && (
-            <div role="alert" className="text-sm text-status-error bg-statusErrorSubtle rounded-md px-3 py-2">
+            <div role="alert" className="text-sm text-status-error bg-statusErrorSubtle rounded-xl px-3.5 py-2.5">
               {error}
             </div>
           )}
@@ -70,14 +72,6 @@ export function LoginPage() {
             {isSubmitting ? 'Logging in…' : 'Log in'}
           </Button>
         </form>
-
-        <p className="text-sm text-text-secondary mt-4 text-center">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-accent-primary hover:underline">
-            Register
-          </Link>
-        </p>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

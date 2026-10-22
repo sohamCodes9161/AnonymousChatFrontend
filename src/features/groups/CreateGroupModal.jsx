@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '../../components/Modal.jsx';
 import { Input } from '../../components/Input.jsx';
+import { Avatar } from '../../components/Avatar.jsx';
 import { Button } from '../../components/Button.jsx';
 import { useFriends } from '../friends/useFriends.js';
 import { createGroupChat } from '../../api/chats.js';
@@ -61,7 +62,7 @@ export function CreateGroupModal({ isOpen, onClose }) {
               friends.map((friend) => (
                 <label
                   key={friend.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-secondary cursor-pointer"
+                  className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-surface-secondary cursor-pointer"
                 >
                   <input
                     type="checkbox"
@@ -69,7 +70,8 @@ export function CreateGroupModal({ isOpen, onClose }) {
                     onChange={() => toggle(friend.id)}
                     className="accent-accent-primary"
                   />
-                  <span className="text-sm text-text-primary">{friend.displayName}</span>
+                  <Avatar name={friend.displayName} src={friend.avatarUrl} size="sm" />
+                  <span className="text-sm text-text-primary flex-1 truncate">{friend.displayName}</span>
                 </label>
               ))
             ) : (

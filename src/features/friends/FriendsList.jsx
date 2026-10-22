@@ -1,10 +1,11 @@
 import { confirm } from '../../stores/confirmStore.js';
 import { useNavigate } from 'react-router-dom';
-import { Ban } from 'lucide-react';
+import { Ban, MessageCircle, Users } from 'lucide-react';
 import { useFriends } from './useFriends.js';
 import { useCreateDirectChat } from '../chats/useCreateDirectChat.js';
 import { useBlockUser } from './useFriendActions.js';
-import { Button } from '../../components/Button.jsx';
+import { Avatar } from '../../components/Avatar.jsx';
+import { SectionHeader } from './SectionHeader.jsx';
 
 export function FriendsList() {
   const { data: friends } = useFriends();
@@ -33,32 +34,53 @@ export function FriendsList() {
   }
 
   if (!friends?.length) {
-    return <div className="text-sm text-text-muted px-2">No friends yet — search above to add some.</div>;
+    return (
+      <section>
+        <SectionHeader title="Friends" />
+        <div className="flex flex-col items-center text-center px-6 py-8">
+          <div className="w-12 h-12 rounded-full bg-accentSubtle text-accent-primary flex items-center justify-center mb-3">
+            <Users size={22} />
+          </div>
+          <div className="text-sm font-medium text-text-primary">No friends yet</div>
+          <div className="text-xs text-text-muted mt-1">Search by username above to send your first request.</div>
+        </div>
+      </section>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      {friends.map((friend) => (
-        <div
-          key={friend.id}
-          className="group flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-surface-secondary"
-        >
-          <span className="text-sm text-text-primary truncate">{friend.displayName}</span>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <Button variant="secondary" className="!px-2 !py-1 text-xs" onClick={() => handleMessage(friend.id)}>
-              Message
-            </Button>
+    <section>
+      <SectionHeader title="Friends" count={friends.length} />
+      <div className="flex flex-col gap-0.5">
+        {friends.map((friend) => (
+          <div
+            key={friend.id}
+            className="group flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface-secondary transition-colors"
+          >
+            <Avatar name={friend.displayName} src={friend.avatarUrl} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-text-primary truncate">{friend.displayName}</div>
+              {friend.username && <div className="text-xs text-text-muted truncate">@{friend.username}</div>}
+            </div>
             <button
               onClick={() => handleBlock(friend.id, friend.displayName)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity duration-fast text-text-muted hover:text-status-error p-1"
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-fast text-text-muted hover:text-status-error p-1.5"
               aria-label={`Block ${friend.displayName}`}
               title="Block"
             >
               <Ban size={14} />
             </button>
+            <button
+              onClick={() => handleMessage(friend.id)}
+              className="w-8 h-8 rounded-full flex items-center justify-center bg-accentSubtle text-accent-primary hover:bg-accent-primary hover:text-white transition-colors"
+              aria-label={`Message ${friend.displayName}`}
+              title="Message"
+            >
+              <MessageCircle size={16} />
+            </button>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </section>
   );
 }

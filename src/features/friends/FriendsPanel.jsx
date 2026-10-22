@@ -4,13 +4,10 @@ import { FriendsList } from './FriendsList.jsx';
 
 export function FriendsPanel() {
   return (
-    <div className="p-4 flex flex-col gap-6 overflow-y-auto h-full">
+    <div className="p-3 flex flex-col gap-5 overflow-y-auto h-full slim-scroll">
       <UserSearch />
       <FriendRequestsList />
-      <div>
-        <h3 className="text-xs font-semibold text-text-muted uppercase mb-2">Friends</h3>
-        <FriendsList />
-      </div>
+      <FriendsList />
     </div>
   );
 }
