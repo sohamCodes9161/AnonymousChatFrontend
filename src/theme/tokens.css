@@ -4,22 +4,22 @@
 
 :root {
   /* Surfaces */
-  --surface-primary: #fbfafe;
-  --surface-secondary: #f0eef8;
+  --surface-primary: #f8fafc;
+  --surface-secondary: #eef2f7;
   --surface-elevated: #ffffff;
   --surface-overlay: rgba(20, 18, 24, 0.5);
 
   /* Text */
-  --text-primary: #1a1823;
-  --text-secondary: #5b5868;
-  --text-muted: #8b8797;
+  --text-primary: #131820;
+  --text-secondary: #525b6b;
+  --text-muted: #868fa0;
 
   /* Borders */
-  --border-default: #e6e3f0;
+  --border-default: #e1e7ef;
 
-  /* Accent — indigo-violet, deliberately not the common terracotta/neon defaults */
-  --accent-primary: #5b4fe8;
-  --accent-secondary: #8b7fff;
+  /* Accent — clean blue (violet is reserved for Incognito) */
+  --accent-primary: #2563eb;
+  --accent-secondary: #4f8dff;
 
   /* Status */
   --status-success: #1f9d6b;
@@ -32,7 +32,7 @@
   --status-error-subtle: rgba(209, 67, 67, 0.1);
 
   /* Accent */
-  --accent-primary-subtle: rgba(91, 79, 232, 0.15);
+  --accent-primary-subtle: rgba(37, 99, 235, 0.12);
   /* Subtle hover state, distinct from the solid active-state background
      it sits alongside, so hover and active remain visually different. */
   --surface-hover: rgba(20, 18, 24, 0.04);
@@ -48,14 +48,19 @@
   --participant-6: #c2410c; /* orange */
 
   /* Chat-specific */
-  --message-sent: #5b4fe8;
+  --message-sent: #2563eb;
   --message-received: #ffffff;
   /* Chat canvas (the wallpaper's base color) and the faint pattern ink. */
-  --canvas-base: #ece9f6;
-  --canvas-ink: rgba(70, 58, 150, 0.09);
-  --bubble-sent-a: #5b4fe8;
-  --bubble-sent-b: #7a6ff2;
-  --bubble-shadow: 0 1px 1.5px rgba(30, 24, 80, 0.12);
+  --canvas-base: #e6ecf3;
+  --canvas-ink: rgba(30, 60, 110, 0.09);
+  --canvas-glow-1: rgba(59, 130, 246, 0.20);
+  --canvas-glow-2: rgba(20, 184, 166, 0.14);
+  --canvas-glow-3: rgba(251, 191, 36, 0.10);
+  --canvas-vignette: rgba(15, 30, 60, 0.10);
+  --doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%231e3c6e' stroke-opacity='.11' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='24' cy='28' r='7'/%3E%3Cpath d='M74 20v14M67 27h14'/%3E%3Cpath d='M118 24l9 14h-18z'/%3E%3Crect x='20' y='84' width='14' height='14' rx='4'/%3E%3Cpath d='M64 92q6-9 12 0t12 0'/%3E%3Cpath d='M122 82a8 8 0 1 0 0 .1M126 98l8 8'/%3E%3Cpath d='M30 132l8 8M38 132l-8 8'/%3E%3Ccircle cx='82' cy='138' r='4'/%3E%3Cpath d='M118 134h20M118 142h12'/%3E%3C/svg%3E");
+  --bubble-sent-a: #1d5fe0;
+  --bubble-sent-b: #3b82f6;
+  --bubble-shadow: 0 1px 1.5px rgba(15, 30, 60, 0.14);
   /* Distinct violet-magenta, reserved ONLY for Incognito — gives stealth
      mode its own unmistakable visual signature rather than a label. */
   --message-incognito: #a855f7;
@@ -80,19 +85,21 @@
 }
 
 [data-theme='dark'] {
-  --surface-primary: #13111b;
-  --surface-secondary: #1c1928;
-  --surface-elevated: #232030;
+  /* Neutral graphite with a barely-cool cast (GitHub/Linear/Telegram-night
+     territory) — no purple in the greys. Blue accent. */
+  --surface-primary: #0f1114;
+  --surface-secondary: #171a1f;
+  --surface-elevated: #1c2026;
   --surface-overlay: rgba(0, 0, 0, 0.6);
 
-  --text-primary: #f0eef5;
-  --text-secondary: #b4b0c2;
-  --text-muted: #726d82;
+  --text-primary: #eceef2;
+  --text-secondary: #a8aeb9;
+  --text-muted: #6a7280;
 
-  --border-default: #322d42;
+  --border-default: #272c34;
 
-  --accent-primary: #8b7fff;
-  --accent-secondary: #6c63ff;
+  --accent-primary: #4f9bff;
+  --accent-secondary: #2f7ef0;
 
   --status-success: #34d399;
   --status-warning: #f5a623;
@@ -100,7 +107,7 @@
   --status-info: #5fa8e0;
   --status-error-subtle: rgba(241, 101, 101, 0.15);
 
-  --accent-primary-subtle: rgba(139, 127, 255, 0.2);
+  --accent-primary-subtle: rgba(79, 155, 255, 0.16);
   --surface-hover: rgba(255, 255, 255, 0.06);
 
   --participant-1: #2dd4bf;
@@ -110,12 +117,17 @@
   --participant-5: #a3e635;
   --participant-6: #fb923c;
 
-  --message-sent: #6c63ff;
-  --message-received: #25222f;
-  --canvas-base: #0d0c14;
-  --canvas-ink: rgba(170, 160, 255, 0.07);
-  --bubble-sent-a: #5a4fe0;
-  --bubble-sent-b: #7468ff;
+  --message-sent: #2f7ef0;
+  --message-received: #1f242b;
+  --canvas-base: #0b0d10;
+  --canvas-ink: rgba(255, 255, 255, 0.05);
+  --canvas-glow-1: rgba(47, 126, 240, 0.16);
+  --canvas-glow-2: rgba(20, 184, 166, 0.10);
+  --canvas-glow-3: rgba(251, 146, 60, 0.06);
+  --canvas-vignette: rgba(0, 0, 0, 0.45);
+  --doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23ffffff' stroke-opacity='.06' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='24' cy='28' r='7'/%3E%3Cpath d='M74 20v14M67 27h14'/%3E%3Cpath d='M118 24l9 14h-18z'/%3E%3Crect x='20' y='84' width='14' height='14' rx='4'/%3E%3Cpath d='M64 92q6-9 12 0t12 0'/%3E%3Cpath d='M122 82a8 8 0 1 0 0 .1M126 98l8 8'/%3E%3Cpath d='M30 132l8 8M38 132l-8 8'/%3E%3Ccircle cx='82' cy='138' r='4'/%3E%3Cpath d='M118 134h20M118 142h12'/%3E%3C/svg%3E");
+  --bubble-sent-a: #1f6fe0;
+  --bubble-sent-b: #3b8cff;
   --bubble-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.45);
   --message-incognito: #c084fc;
   --incognito-subtle: rgba(192, 132, 252, 0.15);
@@ -241,11 +253,11 @@ body {
 }
 
 .glow-accent {
-  box-shadow: 0 0 0 1px rgba(91, 79, 232, 0.12), 0 8px 24px -8px rgba(91, 79, 232, 0.35);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12), 0 8px 24px -8px rgba(37, 99, 235, 0.35);
 }
 
 [data-theme='dark'] .glow-accent {
-  box-shadow: 0 0 0 1px rgba(139, 127, 255, 0.18), 0 8px 24px -8px rgba(139, 127, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(79, 155, 255, 0.18), 0 8px 24px -8px rgba(79, 155, 255, 0.4);
 }
 
 
@@ -267,7 +279,7 @@ body {
   background: color-mix(in srgb, var(--surface-elevated) 82%, transparent);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  box-shadow: 0 1px 2px rgba(30, 24, 80, 0.1);
+  box-shadow: 0 1px 2px rgba(15, 30, 60, 0.12);
 }
 
 .chat-canvas {
